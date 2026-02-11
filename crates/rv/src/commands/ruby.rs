@@ -115,7 +115,7 @@ pub(crate) async fn ruby(global_args: &GlobalArgs, args: RubyArgs) -> Result<()>
             format,
             version_filter,
         } => list::list(global_args, format, version_filter).await?,
-        RubyCommand::Pin { version } => pin::pin(global_args, version)?,
+        RubyCommand::Pin { version } => pin::pin(global_args, version).await?,
         RubyCommand::Dir => dir::dir(global_args)?,
         RubyCommand::Install {
             version,

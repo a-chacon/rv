@@ -402,3 +402,36 @@ fn create_mock_tarball() -> Vec<u8> {
 
     gz_data
 }
+
+#[test]
+fn test_ruby_install_with_latest() {
+    let mut test = RvTest::new();
+
+    let tarball_content = create_mock_tarball();
+    let download_suffix = make_dl_suffix("4.0.1");
+    let _mock = test
+        .mock_tarball_download(&download_suffix, &tarball_content)
+        .create();
+
+    let cache_dir = test.enable_cache();
+
+    let mock = test.mock_releases(["3.4.4", "3.4.5", "4.0.1"].to_vec());
+
+    let output = test.rv(&["ruby", "install", "latest"]);
+
+    mock.assert();
+    output.assert_success();
+
+    assert!(
+        output
+            .normalized_stdout()
+            .contains("Installed Ruby version ruby-4.0.1 to /tmp/home/.local/share/rv/rubies")
+    );
+
+    let cache_key = rv_cache::cache_digest(format!("{}/{}", test.server_url(), download_suffix));
+    let tarball_path = cache_dir
+        .join("ruby-v0")
+        .join("tarballs")
+        .join(format!("{}.tar.gz", cache_key));
+    assert!(tarball_path.exists(), "Tarball should be cached");
+}

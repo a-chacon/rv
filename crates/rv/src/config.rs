@@ -4,6 +4,7 @@ use std::{
     str::FromStr,
 };
 
+use bundler_settings::BundlerSettings;
 use camino::{FromPathBufError, Utf8Path, Utf8PathBuf};
 use indexmap::IndexSet;
 use tracing::{debug, instrument};
@@ -16,6 +17,7 @@ use rv_ruby::{
 
 use crate::GlobalArgs;
 
+mod bundler_settings;
 pub mod github;
 mod ruby_cache;
 mod ruby_fetcher;
@@ -181,6 +183,18 @@ impl Config {
         Ruby::from_dir(install_path, managed)
             .map(|ruby| ruby.is_valid())
             .unwrap_or(false)
+    }
+
+    pub fn gem_home(&self, ruby: &Ruby) -> Utf8PathBuf {
+        let bundler_settings = BundlerSettings {
+            home_dir: rv_dirs::home_dir(),
+            project_dir: self.project_root.clone(),
+        };
+
+        bundler_settings
+            .path()
+            .map(|p| p.join(ruby.gem_scope()))
+            .unwrap_or(ruby.gem_home())
     }
 }
 

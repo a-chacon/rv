@@ -15,7 +15,7 @@ type Result<T> = miette::Result<T, Error>;
 
 pub fn env(config: &config::Config, shell: Shell) -> Result<()> {
     let ruby = config.current_ruby();
-    let (unset, set) = config::env_for(ruby.as_ref())?;
+    let (unset, set) = config::env_for(ruby.as_ref())?.split();
 
     match shell {
         Shell::Zsh | Shell::Bash => {

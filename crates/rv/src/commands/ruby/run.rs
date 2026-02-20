@@ -116,12 +116,15 @@ pub(crate) fn run_no_install<A: AsRef<std::ffi::OsStr>>(
 ) -> Result<Output> {
     let ruby = config.current_ruby().ok_or(Error::NoMatchingRuby)?;
     let ((unset, set), executable_path) = match invocation.program {
-        Program::Ruby => (config::env_for(Some(&ruby))?, ruby.executable_path()),
+        Program::Ruby => (
+            config::env_for(Some(&ruby))?.split(),
+            ruby.executable_path(),
+        ),
         Program::Tool {
             executable_path,
             extra_paths,
         } => (
-            config::env_with_path_for(Some(&ruby), extra_paths)?,
+            config::env_with_path_for(Some(&ruby), extra_paths)?.split(),
             executable_path,
         ),
     };

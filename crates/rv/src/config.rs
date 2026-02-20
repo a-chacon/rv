@@ -261,37 +261,52 @@ fn find_directory_ruby(dir: &Utf8PathBuf) -> Result<Option<(RubyRequest, Source)
     Ok(None)
 }
 
-const ENV_VARS: [&str; 7] = [
-    "RUBY_ROOT",
-    "RUBY_ENGINE",
-    "RUBY_VERSION",
-    "RUBYOPT",
-    "GEM_HOME",
-    "GEM_PATH",
-    "MANPATH",
-];
+pub struct Env {
+    unset: Vec<&'static str>,
 
-#[allow(clippy::type_complexity)]
-pub fn env_for(ruby: Option<&Ruby>) -> Result<(Vec<&'static str>, Vec<(&'static str, String)>)> {
+    set: Vec<(&'static str, String)>,
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Self {
+            set: vec![],
+            unset: Self::ENV_VARS.into(),
+        }
+    }
+}
+
+impl Env {
+    const ENV_VARS: [&str; 7] = [
+        "RUBY_ROOT",
+        "RUBY_ENGINE",
+        "RUBY_VERSION",
+        "RUBYOPT",
+        "GEM_HOME",
+        "GEM_PATH",
+        "MANPATH",
+    ];
+
+    pub fn insert(&mut self, var: &'static str, val: String) {
+        // PATH is never in the list to unset
+        if let Some(i) = self.unset.iter().position(|i| *i == var) {
+            self.unset.remove(i);
+        }
+
+        self.set.push((var, val));
+    }
+
+    pub fn split(&self) -> (Vec<&'static str>, Vec<(&'static str, String)>) {
+        (self.unset.clone(), self.set.clone())
+    }
+}
+
+pub fn env_for(ruby: Option<&Ruby>) -> Result<Env> {
     env_with_path_for(ruby, Default::default())
 }
 
-#[allow(clippy::type_complexity)]
-pub fn env_with_path_for(
-    ruby: Option<&Ruby>,
-    extra_paths: Vec<PathBuf>,
-) -> Result<(Vec<&'static str>, Vec<(&'static str, String)>)> {
-    let mut unset: Vec<_> = ENV_VARS.into();
-    let mut set: Vec<(&'static str, String)> = vec![];
-
-    let mut insert = |var: &'static str, val: String| {
-        // PATH is never in the list to unset
-        if let Some(i) = unset.iter().position(|i| *i == var) {
-            unset.remove(i);
-        }
-
-        set.push((var, val));
-    };
+pub fn env_with_path_for(ruby: Option<&Ruby>, extra_paths: Vec<PathBuf>) -> Result<Env> {
+    let mut env = Env::default();
 
     let pathstr = env::var("PATH").unwrap_or_else(|_| String::new());
     let mut paths = split_paths(&pathstr).collect::<Vec<_>>();
@@ -312,19 +327,19 @@ pub fn env_with_path_for(
     if let Some(ruby) = ruby {
         let mut gem_paths = vec![];
         paths.insert(0, ruby.bin_path().into());
-        insert("RUBY_ROOT", ruby.path.to_string());
-        insert("RUBY_ENGINE", ruby.version.engine.name().into());
-        insert("RUBY_VERSION", ruby.version.number());
+        env.insert("RUBY_ROOT", ruby.path.to_string());
+        env.insert("RUBY_ENGINE", ruby.version.engine.name().into());
+        env.insert("RUBY_VERSION", ruby.version.number());
         let gem_home = ruby.gem_home();
         paths.insert(0, gem_home.join("bin").into());
         gem_paths.insert(0, gem_home.clone());
-        insert("GEM_HOME", gem_home.into_string());
+        env.insert("GEM_HOME", gem_home.into_string());
         let user_home = ruby.user_home();
         paths.insert(0, user_home.join("bin").into());
         gem_paths.insert(0, user_home);
         let gem_path = join_paths(gem_paths)?;
         if let Some(gem_path) = gem_path.to_str() {
-            insert("GEM_PATH", gem_path.into());
+            env.insert("GEM_PATH", gem_path.into());
         }
 
         // Set MANPATH so `man ruby`, `man irb`, etc. work correctly.
@@ -333,16 +348,16 @@ pub fn env_with_path_for(
         #[cfg(not(windows))]
         if let Some(man_path) = ruby.man_path() {
             let existing = env::var("MANPATH").unwrap_or_default();
-            insert("MANPATH", format!("{}:{}", man_path, existing));
+            env.insert("MANPATH", format!("{}:{}", man_path, existing));
         }
     }
 
     let path = join_paths(paths)?;
     if let Some(path) = path.to_str() {
-        insert("PATH", path.into());
+        env.insert("PATH", path.into());
     }
 
-    Ok((unset, set))
+    Ok(env)
 }
 
 #[cfg(test)]

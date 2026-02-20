@@ -196,6 +196,65 @@ impl Config {
             .map(|p| p.join(ruby.gem_scope()))
             .unwrap_or(ruby.gem_home())
     }
+
+    pub fn env_for(&self, ruby: Option<&Ruby>) -> Result<Env> {
+        self.env_with_path_for(ruby, Default::default())
+    }
+
+    pub fn env_with_path_for(&self, ruby: Option<&Ruby>, extra_paths: Vec<PathBuf>) -> Result<Env> {
+        let mut env = Env::default();
+
+        let pathstr = env::var("PATH").unwrap_or_else(|_| String::new());
+        let mut paths = split_paths(&pathstr).collect::<Vec<_>>();
+        paths.extend(extra_paths);
+
+        let old_ruby_paths: Vec<PathBuf> = ["RUBY_ROOT", "GEM_HOME"]
+            .iter()
+            .filter_map(|var| env::var(var).ok())
+            .map(|p| std::path::Path::new(&p).join("bin"))
+            .collect();
+
+        let old_gem_paths: Vec<PathBuf> =
+            env::var("GEM_PATH").map_or_else(|_| vec![], |p| split_paths(&p).collect::<Vec<_>>());
+
+        // Remove old Ruby and Gem paths from PATH
+        paths.retain(|p| !old_ruby_paths.contains(p) && !old_gem_paths.contains(p));
+
+        if let Some(ruby) = ruby {
+            let mut gem_paths = vec![];
+            paths.insert(0, ruby.bin_path().into());
+            env.insert("RUBY_ROOT", ruby.path.to_string());
+            env.insert("RUBY_ENGINE", ruby.version.engine.name().into());
+            env.insert("RUBY_VERSION", ruby.version.number());
+            let gem_home = self.gem_home(ruby);
+            paths.insert(0, gem_home.join("bin").into());
+            gem_paths.insert(0, gem_home.clone());
+            env.insert("GEM_HOME", gem_home.into_string());
+            let user_home = ruby.user_home();
+            paths.insert(0, user_home.join("bin").into());
+            gem_paths.insert(0, user_home);
+            let gem_path = join_paths(gem_paths)?;
+            if let Some(gem_path) = gem_path.to_str() {
+                env.insert("GEM_PATH", gem_path.into());
+            }
+
+            // Set MANPATH so `man ruby`, `man irb`, etc. work correctly.
+            // MANPATH is a Unix concept — Windows has no man page system.
+            // A trailing colon means "also search system man directories".
+            #[cfg(not(windows))]
+            if let Some(man_path) = ruby.man_path() {
+                let existing = env::var("MANPATH").unwrap_or_default();
+                env.insert("MANPATH", format!("{}:{}", man_path, existing));
+            }
+        }
+
+        let path = join_paths(paths)?;
+        if let Some(path) = path.to_str() {
+            env.insert("PATH", path.into());
+        }
+
+        Ok(env)
+    }
 }
 
 fn xdg_data_path() -> Utf8PathBuf {
@@ -313,65 +372,6 @@ impl Env {
     pub fn split(&self) -> (Vec<&'static str>, Vec<(&'static str, String)>) {
         (self.unset.clone(), self.set.clone())
     }
-}
-
-pub fn env_for(ruby: Option<&Ruby>) -> Result<Env> {
-    env_with_path_for(ruby, Default::default())
-}
-
-pub fn env_with_path_for(ruby: Option<&Ruby>, extra_paths: Vec<PathBuf>) -> Result<Env> {
-    let mut env = Env::default();
-
-    let pathstr = env::var("PATH").unwrap_or_else(|_| String::new());
-    let mut paths = split_paths(&pathstr).collect::<Vec<_>>();
-    paths.extend(extra_paths);
-
-    let old_ruby_paths: Vec<PathBuf> = ["RUBY_ROOT", "GEM_HOME"]
-        .iter()
-        .filter_map(|var| env::var(var).ok())
-        .map(|p| std::path::Path::new(&p).join("bin"))
-        .collect();
-
-    let old_gem_paths: Vec<PathBuf> =
-        env::var("GEM_PATH").map_or_else(|_| vec![], |p| split_paths(&p).collect::<Vec<_>>());
-
-    // Remove old Ruby and Gem paths from PATH
-    paths.retain(|p| !old_ruby_paths.contains(p) && !old_gem_paths.contains(p));
-
-    if let Some(ruby) = ruby {
-        let mut gem_paths = vec![];
-        paths.insert(0, ruby.bin_path().into());
-        env.insert("RUBY_ROOT", ruby.path.to_string());
-        env.insert("RUBY_ENGINE", ruby.version.engine.name().into());
-        env.insert("RUBY_VERSION", ruby.version.number());
-        let gem_home = ruby.gem_home();
-        paths.insert(0, gem_home.join("bin").into());
-        gem_paths.insert(0, gem_home.clone());
-        env.insert("GEM_HOME", gem_home.into_string());
-        let user_home = ruby.user_home();
-        paths.insert(0, user_home.join("bin").into());
-        gem_paths.insert(0, user_home);
-        let gem_path = join_paths(gem_paths)?;
-        if let Some(gem_path) = gem_path.to_str() {
-            env.insert("GEM_PATH", gem_path.into());
-        }
-
-        // Set MANPATH so `man ruby`, `man irb`, etc. work correctly.
-        // MANPATH is a Unix concept — Windows has no man page system.
-        // A trailing colon means "also search system man directories".
-        #[cfg(not(windows))]
-        if let Some(man_path) = ruby.man_path() {
-            let existing = env::var("MANPATH").unwrap_or_default();
-            env.insert("MANPATH", format!("{}:{}", man_path, existing));
-        }
-    }
-
-    let path = join_paths(paths)?;
-    if let Some(path) = path.to_str() {
-        env.insert("PATH", path.into());
-    }
-
-    Ok(env)
 }
 
 #[cfg(test)]

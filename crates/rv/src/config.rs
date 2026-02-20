@@ -47,6 +47,7 @@ type Result<T> = miette::Result<T, Error>;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub ruby_dirs: IndexSet<Utf8PathBuf>,
+    pub project_root: Utf8PathBuf,
     pub cache: rv_cache::Cache,
     pub current_exe: Utf8PathBuf,
     pub requested_ruby: RequestedRuby,
@@ -81,6 +82,17 @@ impl Config {
             std::env::current_exe()?.to_str().unwrap().into()
         };
 
+        let current_dir: Utf8PathBuf = std::env::current_dir()?.try_into()?;
+
+        let project_root = current_dir
+            .ancestors()
+            .take_while(|d| Some(*d) != root.parent())
+            .find(|d| d.join("Gemfile.lock").is_file())
+            .map(|p| p.to_path_buf())
+            .unwrap_or(current_dir.clone());
+
+        debug!("Found project directory in {}", project_root);
+
         let requested_ruby = match request {
             Some(req) => {
                 debug!("Explicit ruby request for {} received", req);
@@ -88,16 +100,6 @@ impl Config {
             }
             None => {
                 let home_dir = rv_dirs::home_dir();
-                let current_dir: Utf8PathBuf = std::env::current_dir()?.try_into()?;
-
-                let project_root = current_dir
-                    .ancestors()
-                    .take_while(|d| Some(*d) != root.parent())
-                    .find(|d| d.join("Gemfile.lock").is_file())
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or(current_dir.clone());
-
-                debug!("Found project directory in {}", project_root);
 
                 if let Some(req) = find_directory_ruby(&project_root)? {
                     debug!("Found project ruby request for {} in {:?}", req.0, req.1);
@@ -113,6 +115,7 @@ impl Config {
 
         Ok(Self {
             ruby_dirs,
+            project_root,
             cache,
             current_exe,
             requested_ruby,
@@ -360,6 +363,7 @@ mod tests {
             current_exe: root.join("bin").join("rv"),
             requested_ruby: RequestedRuby::Explicit("3.5.0".parse().unwrap()),
             cache: rv_cache::Cache::temp().unwrap(),
+            project_root: root,
         };
     }
 

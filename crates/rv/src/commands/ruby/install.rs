@@ -55,6 +55,7 @@ pub(crate) async fn install(
     install_dir: Option<String>,
     request: Option<RubyRequest>,
     tarball_path: Option<Utf8PathBuf>,
+    force: bool,
 ) -> Result<()> {
     let config = &Config::new(global_args, request)?;
 
@@ -69,6 +70,12 @@ pub(crate) async fn install(
             None => panic!("No Ruby directories to install into"),
         },
     };
+
+    if config.is_requested_ruby_installed_in_dir(&install_dir) && !force {
+        println!("Version already installed. If you want to overwrite it, use '--force'.");
+
+        return Ok(());
+    }
 
     let archive_path = if let Some(path) = tarball_path {
         path

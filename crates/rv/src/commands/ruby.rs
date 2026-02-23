@@ -70,6 +70,10 @@ pub enum RubyCommand {
         /// Path to a local ruby tarball
         #[arg(long, value_name = "TARBALL_PATH")]
         tarball_path: Option<Utf8PathBuf>,
+
+        /// Overwrite an existing installed version.
+        #[arg(long)]
+        force: bool,
     },
 
     #[command(about = "Uninstall a specific Ruby version")]
@@ -132,7 +136,8 @@ pub(crate) async fn ruby(global_args: &GlobalArgs, args: RubyArgs) -> Result<()>
             version,
             install_dir,
             tarball_path,
-        } => install::install(global_args, install_dir, version, tarball_path).await?,
+            force,
+        } => install::install(global_args, install_dir, version, tarball_path, force).await?,
         RubyCommand::Uninstall { version } => uninstall::uninstall(global_args, version).await?,
         RubyCommand::Run {
             version,

@@ -206,10 +206,31 @@ fn test_ruby_install_cached_file_reused() {
     output1.assert_success();
 
     // This one should just reuse the cached tarball without downloading.
-    let output2 = test.rv(&["ruby", "install", "3.4.5"]);
+    let output2 = test.rv(&["ruby", "install", "3.4.5", "--force"]);
     output2.assert_success();
 
     output2.assert_stdout_contains("already exists, skipping download");
+
+    mock.assert();
+}
+
+#[test]
+fn test_ruby_install_skips_existing_version_and_suggests_force_flag() {
+    let mut test = RvTest::new();
+
+    let mock = test.mock_ruby_download("3.4.5").create();
+
+    let _cache_dir = test.enable_cache();
+
+    // First installation – should succeed
+    let output1 = test.rv(&["ruby", "install", "3.4.5"]);
+    output1.assert_success();
+
+    // Second installation – should report that it’s already present
+    let output2 = test.rv(&["ruby", "install", "3.4.5"]);
+    output2.assert_success();
+
+    output2.assert_stdout_contains("If you want to overwrite it, use '--force'.");
 
     mock.assert();
 }

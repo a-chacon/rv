@@ -99,6 +99,7 @@ pub(crate) async fn run<A: AsRef<std::ffi::OsStr>>(
             install_dir,
             Some(request),
             tarball_path,
+            false,
         )
         .await?
     };

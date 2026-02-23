@@ -77,7 +77,6 @@ fn test_shell_env_clears_ruby_vars() {
 fn test_shell_env_clear_gem_vars() {
     let mut test = RvTest::new();
     test.env.insert("PATH".into(), "/tmp/bin".into());
-    test.env.insert("GEM_ROOT".into(), "/tmp/ruby/gems".into());
     test.env.insert("GEM_HOME".into(), "/tmp/root/.gems".into());
     test.env.insert(
         "GEM_PATH".into(),
@@ -105,7 +104,6 @@ fn test_shell_env_with_ruby_and_xdg_compatible_gem_path() {
     test.env.insert("RUBY_ENGINE".into(), "ruby".into());
     test.env.insert("RUBY_VERSION".into(), "3.4.5".into());
     test.env.insert("RUBYOPT".into(), "--verbose".into());
-    test.env.insert("GEM_ROOT".into(), "/tmp/ruby/gems".into());
     test.env.insert("GEM_HOME".into(), "/tmp/root/.gems".into());
     test.env.insert(
         "GEM_PATH".into(),
@@ -119,14 +117,14 @@ fn test_shell_env_with_ruby_and_xdg_compatible_gem_path() {
 
     #[cfg(unix)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT GEM_ROOT
+    unset RUBYOPT
     export RUBY_ROOT=/tmp/home/.local/share/rv/rubies/ruby-3.3.5
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
-    export GEM_HOME=/tmp/home/.local/share/rv/gems/ruby/3.3.0
-    export GEM_PATH=/tmp/home/.local/share/rv/gems/ruby/3.3.0
+    export GEM_HOME=/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0
+    export GEM_PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
     export MANPATH='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:'
-    export PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
+    export PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
     hash -r
     ");
 
@@ -136,13 +134,13 @@ fn test_shell_env_with_ruby_and_xdg_compatible_gem_path() {
     // but the quotes remain. This is semantically correct for bash.
     #[cfg(windows)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT GEM_ROOT MANPATH
+    unset RUBYOPT MANPATH
     export RUBY_ROOT='/tmp/home/.local/share/rv/rubies/ruby-3.3.5'
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
-    export GEM_HOME='/tmp/home/.local/share/rv/gems/ruby/3.3.0'
-    export GEM_PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0'
-    export PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
+    export GEM_HOME='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
+    export GEM_PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
+    export PATH='/tmp/home/.local/share/rv/gems/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
     hash -r
     ");
 }
@@ -160,7 +158,6 @@ fn test_shell_env_with_ruby_and_legacy_gem_path() {
     test.env.insert("RUBY_ENGINE".into(), "ruby".into());
     test.env.insert("RUBY_VERSION".into(), "3.4.5".into());
     test.env.insert("RUBYOPT".into(), "--verbose".into());
-    test.env.insert("GEM_ROOT".into(), "/tmp/ruby/gems".into());
     test.env.insert("GEM_HOME".into(), "/tmp/root/.gems".into());
     test.env.insert(
         "GEM_PATH".into(),
@@ -174,26 +171,26 @@ fn test_shell_env_with_ruby_and_legacy_gem_path() {
 
     #[cfg(unix)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT GEM_ROOT
+    unset RUBYOPT
     export RUBY_ROOT=/tmp/home/.local/share/rv/rubies/ruby-3.3.5
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
-    export GEM_HOME=/tmp/home/.gem/ruby/3.3.0
-    export GEM_PATH=/tmp/home/.gem/ruby/3.3.0
+    export GEM_HOME=/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0
+    export GEM_PATH='/tmp/home/.gem/ruby/3.3.0:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
     export MANPATH='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:'
-    export PATH='/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
+    export PATH='/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
     hash -r
     ");
 
     #[cfg(windows)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT GEM_ROOT MANPATH
+    unset RUBYOPT MANPATH
     export RUBY_ROOT='/tmp/home/.local/share/rv/rubies/ruby-3.3.5'
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
-    export GEM_HOME='/tmp/home/.gem/ruby/3.3.0'
-    export GEM_PATH='/tmp/home/.gem/ruby/3.3.0'
-    export PATH='/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
+    export GEM_HOME='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
+    export GEM_PATH='/tmp/home/.gem/ruby/3.3.0:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0'
+    export PATH='/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin'
     hash -r
     ");
 }
@@ -216,27 +213,25 @@ fn test_powershell_env_with_ruby() {
     #[cfg(unix)]
     assert_snapshot!(stdout, @r#"
     Remove-Item Env:\RUBYOPT -ErrorAction SilentlyContinue
-    Remove-Item Env:\GEM_ROOT -ErrorAction SilentlyContinue
     $env:RUBY_ROOT = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5"
     $env:RUBY_ENGINE = "ruby"
     $env:RUBY_VERSION = "3.3.5"
-    $env:GEM_HOME = "/tmp/home/.gem/ruby/3.3.0"
-    $env:GEM_PATH = "/tmp/home/.gem/ruby/3.3.0"
+    $env:GEM_HOME = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0"
+    $env:GEM_PATH = "/tmp/home/.gem/ruby/3.3.0:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0"
     $env:MANPATH = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:"
-    $env:PATH = "/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin"
+    $env:PATH = "/tmp/home/.gem/ruby/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin:/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin:/tmp/bin"
     "#);
 
     #[cfg(windows)]
     assert_snapshot!(stdout, @r#"
     Remove-Item Env:\RUBYOPT -ErrorAction SilentlyContinue
-    Remove-Item Env:\GEM_ROOT -ErrorAction SilentlyContinue
     Remove-Item Env:\MANPATH -ErrorAction SilentlyContinue
     $env:RUBY_ROOT = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5"
     $env:RUBY_ENGINE = "ruby"
     $env:RUBY_VERSION = "3.3.5"
-    $env:GEM_HOME = "/tmp/home/.gem/ruby/3.3.0"
-    $env:GEM_PATH = "/tmp/home/.gem/ruby/3.3.0"
-    $env:PATH = "/tmp/home/.gem/ruby/3.3.0/bin;/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin;/tmp/bin"
+    $env:GEM_HOME = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0"
+    $env:GEM_PATH = "/tmp/home/.gem/ruby/3.3.0;/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0"
+    $env:PATH = "/tmp/home/.gem/ruby/3.3.0/bin;/tmp/home/.local/share/rv/rubies/ruby-3.3.5/lib/ruby/gems/3.3.0/bin;/tmp/home/.local/share/rv/rubies/ruby-3.3.5/bin;/tmp/bin"
     "#);
 }
 

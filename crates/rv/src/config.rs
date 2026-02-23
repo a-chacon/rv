@@ -246,12 +246,11 @@ fn find_directory_ruby(dir: &Utf8PathBuf) -> Result<Option<(RubyRequest, Source)
     Ok(None)
 }
 
-const ENV_VARS: [&str; 8] = [
+const ENV_VARS: [&str; 7] = [
     "RUBY_ROOT",
     "RUBY_ENGINE",
     "RUBY_VERSION",
     "RUBYOPT",
-    "GEM_ROOT",
     "GEM_HOME",
     "GEM_PATH",
     "MANPATH",
@@ -283,7 +282,7 @@ pub fn env_with_path_for(
     let mut paths = split_paths(&pathstr).collect::<Vec<_>>();
     paths.extend(extra_paths);
 
-    let old_ruby_paths: Vec<PathBuf> = ["RUBY_ROOT", "GEM_ROOT", "GEM_HOME"]
+    let old_ruby_paths: Vec<PathBuf> = ["RUBY_ROOT", "GEM_HOME"]
         .iter()
         .filter_map(|var| env::var(var).ok())
         .map(|p| std::path::Path::new(&p).join("bin"))
@@ -305,11 +304,9 @@ pub fn env_with_path_for(
         paths.insert(0, gem_home.join("bin").into());
         gem_paths.insert(0, gem_home.clone());
         insert("GEM_HOME", gem_home.into_string());
-        if let Some(gem_root) = ruby.gem_root() {
-            paths.insert(0, gem_root.join("bin").into());
-            gem_paths.insert(0, gem_root.clone());
-            insert("GEM_ROOT", gem_root.into_string());
-        }
+        let user_home = ruby.user_home();
+        paths.insert(0, user_home.join("bin").into());
+        gem_paths.insert(0, user_home);
         let gem_path = join_paths(gem_paths)?;
         if let Some(gem_path) = gem_path.to_str() {
             insert("GEM_PATH", gem_path.into());

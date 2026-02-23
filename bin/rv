@@ -2,11 +2,24 @@
 set -euo pipefail
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}"/ )/.." && pwd )"
 
-echo "+ cargo build --release -q --bin rv"
+if [ "$1" != "--quiet" ]
+then
+  echo "+ cargo build --release -q --bin rv"
+fi
+
 (
     cd "$DIR"
     cargo build --release -q --bin rv
 )
 
-set -x
+if [ "$1" != "--quiet" ]
+then
+  set -x
+fi
+
+if [ "$1" = "--quiet" ]
+then
+  shift 1
+fi
+
 exec "$DIR"/target/release/rv "$@"

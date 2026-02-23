@@ -18,6 +18,7 @@ use rv_lockfile::datatypes::GemSection;
 use rv_lockfile::datatypes::GemVersion;
 use rv_lockfile::datatypes::GemfileDotLock;
 use rv_lockfile::datatypes::GitSection;
+use rv_lockfile::datatypes::PathSection;
 use rv_lockfile::datatypes::Spec;
 use rv_ruby::{Ruby, request::RubyRequest};
 use sha2::Digest;
@@ -379,7 +380,7 @@ async fn ci_inner_work(
 
 fn install_paths<'i>(
     config: &Config,
-    path_sources: &Vec<rv_lockfile::datatypes::PathSection<'i>>,
+    path_sources: &Vec<PathSection<'i>>,
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
     use rayon::prelude::*;
@@ -405,7 +406,7 @@ fn install_paths<'i>(
 }
 
 fn install_path(
-    path_section: &rv_lockfile::datatypes::PathSection,
+    path_section: &PathSection,
     config: &Config,
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
@@ -468,7 +469,7 @@ fn install_path(
 
 fn install_git_repos<'i>(
     config: &Config,
-    git_sources: &Vec<rv_lockfile::datatypes::GitSection<'i>>,
+    git_sources: &Vec<GitSection<'i>>,
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
     let span = info_span!("Fetching git gems");
@@ -629,7 +630,7 @@ fn install_git_repo(
 
 /// Note this is not async, it shells out to `git clone` so it will block.
 fn download_git_repos<'i>(
-    git_sources: &Vec<rv_lockfile::datatypes::GitSection<'i>>,
+    git_sources: &Vec<GitSection<'i>>,
     cache: &rv_cache::Cache,
     args: &CiInnerArgs,
 ) -> Result<Vec<DownloadedGitRepo<'i>>> {

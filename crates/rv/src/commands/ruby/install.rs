@@ -60,22 +60,7 @@ pub(crate) async fn install(
 
     let progress = WorkProgress::new();
 
-    let requested_range = config.ruby_request();
-
-    let version = if let Ok(version) = RubyVersion::try_from(requested_range.clone()) {
-        debug!(
-            "Skipping the rv-ruby releases fetch because the user has given a specific ruby version {version}"
-        );
-        version
-    } else {
-        debug!("Fetching available rubies, because user gave an underspecified Ruby range");
-        let remote_rubies = config.remote_rubies().await;
-        let selected = requested_range
-            .find_match_in(&remote_rubies)
-            .ok_or(Error::NoMatchingRuby)?
-            .version;
-        RubyVersion::Released(selected)
-    };
+    let version = config.find_matching_remote_ruby().await?;
 
     let install_dir = match install_dir {
         Some(dir) => Utf8PathBuf::from(dir),

@@ -80,12 +80,46 @@ struct CiInnerArgs {
     pub max_concurrent_requests: usize,
     pub max_concurrent_installs: usize,
     pub validate_checksums: bool,
-    pub install_path: Utf8PathBuf,
+    pub install_layout: InstallLayout,
     pub extensions_scope: String,
     /// Full path to the Ruby executable, used for Windows .bat binstub wrappers
     pub ruby_executable_path: Utf8PathBuf,
     /// Will install already installed gems
     pub force: bool,
+}
+
+#[derive(Debug)]
+struct InstallLayout {
+    install_path: Utf8PathBuf,
+}
+
+impl InstallLayout {
+    pub fn binstub_dir(&self) -> Utf8PathBuf {
+        self.install_path.join("bin")
+    }
+
+    pub fn gem_path(&self, full_version: &str) -> Utf8PathBuf {
+        self.install_path.join(format!("gems/{}", full_version))
+    }
+
+    pub fn spec_path(&self, full_version: &str) -> Utf8PathBuf {
+        self.install_path
+            .join(format!("specifications/{}.gemspec", full_version))
+    }
+
+    pub fn git_gem_path(&self, git_section: &GitSection) -> Utf8PathBuf {
+        use std::path::Path;
+
+        let repo_path = Path::new(&git_section.remote);
+        let repo_name = repo_path
+            .file_stem()
+            .expect("repo has no filename?")
+            .to_string_lossy();
+
+        let install_dir_name = format!("{}-{:.12}", repo_name, git_section.revision);
+        self.install_path
+            .join(format!("bundler/gems/{install_dir_name}"))
+    }
 }
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
@@ -201,7 +235,7 @@ pub(crate) async fn ci(global_args: &GlobalArgs, args: CleanInstallArgs) -> Resu
         max_concurrent_requests: args.max_concurrent_requests,
         max_concurrent_installs: args.max_concurrent_installs,
         validate_checksums: args.validate_checksums,
-        install_path,
+        install_layout: InstallLayout { install_path },
         extensions_scope,
         ruby_executable_path: ruby.executable_path(),
         force: args.force,
@@ -254,7 +288,7 @@ pub(crate) async fn install_from_lockfile(
         max_concurrent_requests: 10,
         max_concurrent_installs: 20,
         validate_checksums: true,
-        install_path,
+        install_layout: InstallLayout { install_path },
         extensions_scope: find_exts_scope(config)?,
         ruby_executable_path: ruby.executable_path(),
         force: true,
@@ -273,8 +307,9 @@ async fn ci_inner_work(
     progress: &WorkProgress,
     mut lockfile: GemfileDotLock<'_>,
 ) -> Result<InstallStats> {
-    let install_path = &args.install_path;
-    let binstub_dir = install_path.join("bin");
+    let install_layout = &args.install_layout;
+    let install_path = &install_layout.install_path;
+    let binstub_dir = install_layout.binstub_dir();
     tokio::fs::create_dir_all(&binstub_dir).await?;
 
     // Filter to gems matching local platform, preferring platform-specific gems
@@ -285,7 +320,7 @@ async fn ci_inner_work(
 
     if !args.force {
         let original_count = lockfile.spec_count();
-        discard_installed_gems(&mut lockfile, install_path);
+        discard_installed_gems(&mut lockfile, install_layout);
         let filtered_count = lockfile.spec_count();
 
         let already_installed = original_count.saturating_sub(filtered_count);
@@ -417,14 +452,14 @@ fn retain_gems_to_be_installed(lockfile: &mut GemfileDotLock) {
     })
 }
 
-fn discard_installed_gems(lockfile: &mut GemfileDotLock, install_path: &Utf8PathBuf) {
+fn discard_installed_gems(lockfile: &mut GemfileDotLock, install_layout: &InstallLayout) {
     lockfile.gem.iter_mut().for_each(|gem_section| {
         use std::path::Path;
 
         gem_section.specs.retain(|spec| {
-            let full_version = spec.gem_version;
-            let gem_path = install_path.join(format!("gems/{full_version}"));
-            let spec_path = install_path.join(format!("specifications/{full_version}.gemspec"));
+            let full_version = &spec.gem_version.to_string();
+            let gem_path = install_layout.gem_path(full_version);
+            let spec_path = install_layout.spec_path(full_version);
 
             !Path::new(&gem_path).exists() || !Path::new(&spec_path).exists()
         })
@@ -435,11 +470,11 @@ fn discard_installed_gems(lockfile: &mut GemfileDotLock, install_path: &Utf8Path
     lockfile.git.iter_mut().for_each(|git_section| {
         use std::path::Path;
 
-        let install_dir_name = git_section.install_dir_name();
+        let git_gem_path = install_layout.git_gem_path(git_section);
 
         git_section
             .specs
-            .retain(|_| !Path::new(&install_dir_name).exists())
+            .retain(|_| !Path::new(&git_gem_path).exists())
     });
 
     lockfile.git.retain(|section| !section.specs.is_empty());
@@ -521,7 +556,7 @@ fn install_path(
             path_specs.push(dep_gemspec.clone());
 
             // pass the executable names to generate binstubs
-            let binstub_dir = args.install_path.join("bin");
+            let binstub_dir = args.install_layout.binstub_dir();
             install_binstub(
                 &dep_gemspec.name,
                 &dep_gemspec.executables,
@@ -546,7 +581,6 @@ fn install_git_repos<'i>(
     let repos = download_git_repos(git_sources, &config.cache, args)?;
 
     debug!("Installing git gems");
-    let git_gems_dir = args.install_path.join("bundler/gems");
 
     use rayon::prelude::*;
     let pool = create_rayon_pool(args.max_concurrent_installs).unwrap();
@@ -554,7 +588,7 @@ fn install_git_repos<'i>(
         let git_source_specs = repos
             .iter()
             .par_bridge()
-            .map(|repo| install_git_repo(repo, &git_gems_dir, config, args))
+            .map(|repo| install_git_repo(repo, config, args))
             .collect::<Result<Vec<_>>>()?
             .into_iter()
             .flatten()
@@ -566,15 +600,14 @@ fn install_git_repos<'i>(
 
 fn install_git_repo(
     repo: &DownloadedGitRepo,
-    git_gems_dir: &Utf8Path,
     config: &Config,
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
     debug!("Installing git repo {:?}", repo);
+    let install_layout = &args.install_layout;
     let repo_path = &repo.remote();
     let repo_sha = repo.sha();
-    let git_name = repo.install_dir_name();
-    let dest_dir = git_gems_dir.join(git_name);
+    let dest_dir = install_layout.git_gem_path(&repo.source);
     let mut just_cloned = false;
 
     if std::fs::exists(&dest_dir)?.not() {
@@ -682,7 +715,7 @@ fn install_git_repo(
             git_specs.push(dep_gemspec.clone());
 
             // pass the executable names to generate binstubs
-            let binstub_dir = args.install_path.join("bin");
+            let binstub_dir = args.install_layout.binstub_dir();
             install_binstub(
                 &dep_gemspec.name,
                 &dep_gemspec.executables,
@@ -920,14 +953,13 @@ fn install_gems<'i>(
     span.pb_set_length(downloaded.len() as u64);
     let _guard = span.enter();
 
-    let binstub_dir = args.install_path.join("bin");
     let pool = create_rayon_pool(args.max_concurrent_installs).unwrap();
     let specs = pool.install(|| {
         downloaded
             .into_iter()
             .par_bridge()
             .map(|download| {
-                let result = install_single_gem(download, args, &binstub_dir);
+                let result = install_single_gem(download, args);
                 span.pb_inc(1);
                 progress.complete_one();
                 result
@@ -941,18 +973,19 @@ fn install_gems<'i>(
 fn install_single_gem<'i>(
     download: DownloadedRubygems<'i>,
     args: &CiInnerArgs,
-    binstub_dir: &Utf8Path,
 ) -> Result<GemSpecification> {
     let gv = download.spec.gem_version;
+    let install_layout = &args.install_layout;
+    let binstub_dir = install_layout.binstub_dir();
     // Actually unpack the tarball here.
-    let dep_gemspec_res = download.unpack_tarball(&args.install_path, args)?;
+    let dep_gemspec_res = download.unpack_tarball(args)?;
     debug!("Unpacked tarball {gv}");
     let dep_gemspec = dep_gemspec_res.ok_or(UnpackError::MissingGemspec(gv.to_string()))?;
     debug!("Installing binstubs for {gv}");
     install_binstub(
         &dep_gemspec.name,
         &dep_gemspec.executables,
-        binstub_dir,
+        &binstub_dir,
         &args.ruby_executable_path,
     )?;
     debug!("Installed {gv}");
@@ -1234,26 +1267,18 @@ impl<'i> DownloadedGitRepo<'i> {
     pub fn submodules(&self) -> bool {
         self.source.submodules
     }
-
-    pub fn install_dir_name(&self) -> String {
-        self.source.install_dir_name()
-    }
 }
 
 impl<'i> DownloadedRubygems<'i> {
-    fn unpack_tarball(
-        self,
-        bundle_path: &Utf8PathBuf,
-        args: &CiInnerArgs,
-    ) -> Result<Option<GemSpecification>> {
-        match self.unpack_tarball_inner(bundle_path, args) {
+    fn unpack_tarball(self, args: &CiInnerArgs) -> Result<Option<GemSpecification>> {
+        match self.unpack_tarball_inner(args) {
             Err(error) => {
                 // Print out nice Miette reports
                 if matches!(error, UnpackError::YamlParsing(_)) {
                     println!("{error:?}");
                 };
 
-                std::fs::remove_dir_all(bundle_path).unwrap();
+                std::fs::remove_dir_all(args.install_layout.install_path.clone()).unwrap();
 
                 Err(Error::UnpackError(error))
             }
@@ -1261,11 +1286,7 @@ impl<'i> DownloadedRubygems<'i> {
         }
     }
 
-    fn unpack_tarball_inner(
-        self,
-        bundle_path: &Utf8PathBuf,
-        args: &CiInnerArgs,
-    ) -> UnpackResult<Option<GemSpecification>> {
+    fn unpack_tarball_inner(self, args: &CiInnerArgs) -> UnpackResult<Option<GemSpecification>> {
         // Unpack the tarball into DIR/gems/
         // It should contain a metadata zip, and a data zip
         // (and optionally, a checksum zip).
@@ -1312,7 +1333,7 @@ impl<'i> DownloadedRubygems<'i> {
                         ));
                     }
                     let UnpackedMetadata { hashed, gemspec } =
-                        unpack_metadata(bundle_path, &full_name, HashReader::new(entry))?;
+                        unpack_metadata(&args.install_layout, &full_name, HashReader::new(entry))?;
                     found_gemspec = Some(gemspec);
                     metadata_hashed = Some(hashed);
                 }
@@ -1324,7 +1345,7 @@ impl<'i> DownloadedRubygems<'i> {
                         ));
                     }
                     let unpacked =
-                        unpack_data_tar(bundle_path, &full_name, HashReader::new(entry))?;
+                        unpack_data_tar(&args.install_layout, &full_name, HashReader::new(entry))?;
                     data_tar_unpacked = Some(unpacked);
                 }
                 "data.tar.gz.sig" | "metadata.gz.sig" | "checksums.yaml.gz.sig" => {
@@ -1484,8 +1505,9 @@ fn compile_gem(
 ) -> Result<CompileStats> {
     let mut compile_results = Vec::with_capacity(spec.extensions.len());
 
-    let gem_home = &args.install_path;
-    let gem_path = gem_home.join("gems").join(spec.full_name());
+    let install_layout = &args.install_layout;
+    let gem_home = &install_layout.install_path;
+    let gem_path = install_layout.gem_path(&spec.full_name());
     let lib_dest = gem_path.join("lib");
     let ext_dest = gem_home
         .join("extensions")
@@ -1731,7 +1753,7 @@ struct UnpackedData {
 /// BUNDLEPATH/gems/name-version/ENTRY
 /// Returns the checksum.
 fn unpack_data_tar<R>(
-    bundle_path: &Utf8Path,
+    install_layout: &InstallLayout,
     nameversion: &str,
     data_tar_gz: HashReader<R>,
 ) -> UnpackResult<UnpackedData>
@@ -1739,7 +1761,7 @@ where
     R: std::io::Read,
 {
     // First, create the data's destination.
-    let data_dir: PathBuf = bundle_path.join("gems").join(nameversion).into();
+    let data_dir: PathBuf = install_layout.gem_path(nameversion).into();
     fs_err::create_dir_all(&data_dir)?;
     // Unpack it:
     let mut gem_data_archive = tar::Archive::new(GzDecoder::new(data_tar_gz));
@@ -1758,7 +1780,7 @@ struct UnpackedMetadata {
 /// Given the metadata.gz from a gem, write it to the filesystem under
 /// BUNDLEPATH/specifications/name-version.gemspec
 fn unpack_metadata<R>(
-    bundle_path: &Utf8Path,
+    install_layout: &InstallLayout,
     nameversion: &str,
     metadata_gz: HashReader<R>,
 ) -> UnpackResult<UnpackedMetadata>
@@ -1766,10 +1788,9 @@ where
     R: Read,
 {
     // First, create the metadata's destination.
-    let metadata_dir = bundle_path.join("specifications/");
-    fs_err::create_dir_all(&metadata_dir)?;
-    let filename = format!("{nameversion}.gemspec");
-    let dst_path = metadata_dir.join(filename);
+    let dst_path = install_layout.spec_path(nameversion);
+    let metadata_dir = dst_path.parent().unwrap();
+    fs_err::create_dir_all(metadata_dir)?;
     let mut dst = fs_err::File::create(&dst_path)?;
 
     // Then write the (unzipped) source into the destination.
@@ -2156,12 +2177,15 @@ SHA512:
         let input = include_str!("../../../rv-lockfile/tests/inputs/Gemfile.twosources.lock");
 
         let mut lockfile = rv_lockfile::parse(input).unwrap();
+        let install_layout = InstallLayout {
+            install_path: install_path.clone(),
+        };
 
         // A fake installed gem (We check based on dir, so just a dir with the name is enough)
         let installed_gem_dir = install_path.join("gems").join("rake-13.3.0");
         fs::create_dir_all(&installed_gem_dir).unwrap();
 
-        discard_installed_gems(&mut lockfile, &install_path);
+        discard_installed_gems(&mut lockfile, &install_layout);
 
         assert_eq!(lockfile.gem_spec_count(), 2);
         assert_eq!(lockfile.gem[0].specs[0].gem_version.name, "rake");
@@ -2175,7 +2199,7 @@ SHA512:
         let installed_specification = specifications_dir.join("rake-13.3.0.gemspec");
         fs::write(&installed_specification, "").unwrap();
 
-        discard_installed_gems(&mut lockfile, &install_path);
+        discard_installed_gems(&mut lockfile, &install_layout);
 
         assert_eq!(lockfile.gem_spec_count(), 1);
         assert_eq!(lockfile.gem[0].specs[0].gem_version.name, "rack");

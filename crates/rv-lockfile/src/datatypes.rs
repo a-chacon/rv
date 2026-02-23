@@ -71,20 +71,6 @@ pub struct GitSection<'i> {
     pub specs: Vec<Spec<'i>>,
 }
 
-impl<'i> GitSection<'i> {
-    pub fn install_dir_name(&self) -> String {
-        use std::path::Path;
-
-        let repo_path = Path::new(&self.remote);
-        let repo_name = repo_path
-            .file_stem()
-            .expect("repo has no filename?")
-            .to_string_lossy();
-
-        format!("{}-{:.12}", repo_name, self.revision)
-    }
-}
-
 /// Rubygems server source that gems could come from.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

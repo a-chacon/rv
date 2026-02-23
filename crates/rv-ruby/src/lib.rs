@@ -127,11 +127,21 @@ impl Ruby {
         self.path.join("bin")
     }
 
+    pub fn gem_home(&self) -> Utf8PathBuf {
+        self.gem_root().unwrap_or(
+            self.path
+                .join("lib")
+                .join("ruby")
+                .join("gems")
+                .join(self.version.abi()),
+        )
+    }
+
     pub fn gem_root(&self) -> Option<Utf8PathBuf> {
         self.gem_root.clone()
     }
 
-    pub fn gem_home(&self) -> Utf8PathBuf {
+    pub fn user_home(&self) -> Utf8PathBuf {
         let home = rv_dirs::home_dir();
         let legacy_path = home.join(".gem").join(self.gem_scope());
         if legacy_path.exists() {

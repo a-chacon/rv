@@ -333,7 +333,7 @@ async fn ci_inner_work(
     progress.start_phase(downloaded_count as u64, 40);
 
     let install_start = Instant::now();
-    let specs = install_gems(config, downloaded, args, progress)?;
+    let specs = install_gems(downloaded, args, progress)?;
     let gem_count = specs.len();
     let executables_installed = specs.iter().map(|spec| spec.executables.len()).sum();
     let install_elapsed = install_start.elapsed();
@@ -839,7 +839,6 @@ pub fn create_rayon_pool(
 }
 
 fn install_gems<'i>(
-    config: &Config,
     downloaded: Vec<DownloadedRubygems<'i>>,
     args: &CiInnerArgs,
     progress: &WorkProgress,
@@ -861,7 +860,7 @@ fn install_gems<'i>(
             .into_iter()
             .par_bridge()
             .map(|download| {
-                let result = install_single_gem(config, download, args, &binstub_dir);
+                let result = install_single_gem(download, args, &binstub_dir);
                 span.pb_inc(1);
                 progress.complete_one();
                 result
@@ -873,14 +872,13 @@ fn install_gems<'i>(
 }
 
 fn install_single_gem<'i>(
-    config: &Config,
     download: DownloadedRubygems<'i>,
     args: &CiInnerArgs,
     binstub_dir: &Utf8Path,
 ) -> Result<GemSpecification> {
     let gv = download.spec.gem_version;
     // Actually unpack the tarball here.
-    let dep_gemspec_res = download.unpack_tarball(config, &args.install_path, args)?;
+    let dep_gemspec_res = download.unpack_tarball(&args.install_path, args)?;
     debug!("Unpacked tarball {gv}");
     let dep_gemspec = dep_gemspec_res.ok_or(UnpackError::MissingGemspec(gv.to_string()))?;
     debug!("Installing binstubs for {gv}");
@@ -1178,11 +1176,10 @@ impl<'i> DownloadedGitRepo<'i> {
 impl<'i> DownloadedRubygems<'i> {
     fn unpack_tarball(
         self,
-        config: &Config,
         bundle_path: &Utf8PathBuf,
         args: &CiInnerArgs,
     ) -> Result<Option<GemSpecification>> {
-        match self.unpack_tarball_inner(config, bundle_path, args) {
+        match self.unpack_tarball_inner(bundle_path, args) {
             Err(error) => {
                 // Print out nice Miette reports
                 if matches!(error, UnpackError::YamlParsing(_)) {
@@ -1199,7 +1196,6 @@ impl<'i> DownloadedRubygems<'i> {
 
     fn unpack_tarball_inner(
         self,
-        config: &Config,
         bundle_path: &Utf8PathBuf,
         args: &CiInnerArgs,
     ) -> UnpackResult<Option<GemSpecification>> {
@@ -1249,7 +1245,7 @@ impl<'i> DownloadedRubygems<'i> {
                         ));
                     }
                     let UnpackedMetadata { hashed, gemspec } =
-                        unpack_metadata(config, bundle_path, &full_name, HashReader::new(entry))?;
+                        unpack_metadata(bundle_path, &full_name, HashReader::new(entry))?;
                     found_gemspec = Some(gemspec);
                     metadata_hashed = Some(hashed);
                 }
@@ -1697,7 +1693,6 @@ struct UnpackedMetadata {
 /// Given the metadata.gz from a gem, write it to the filesystem under
 /// BUNDLEPATH/specifications/name-version.gemspec
 fn unpack_metadata<R>(
-    _config: &Config,
     bundle_path: &Utf8Path,
     nameversion: &str,
     metadata_gz: HashReader<R>,

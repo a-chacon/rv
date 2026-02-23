@@ -60,6 +60,12 @@ impl GemfileDotLock<'_> {
             .for_each(|gem_section| gem_section.discard_installed_gems(install_path));
 
         self.gem.retain(|section| !section.specs.is_empty());
+
+        self.git
+            .iter_mut()
+            .for_each(|git_section| git_section.discard_installed_gems(install_path));
+
+        self.git.retain(|section| !section.specs.is_empty());
     }
 }
 
@@ -83,6 +89,32 @@ pub struct GitSection<'i> {
     pub submodules: bool,
     /// All gems which came from this source in particular.
     pub specs: Vec<Spec<'i>>,
+}
+
+impl<'i> GitSection<'i> {
+    pub fn install_dir_name(&self) -> String {
+        use std::path::Path;
+
+        let repo_path = Path::new(&self.remote);
+        let repo_name = repo_path
+            .file_stem()
+            .expect("repo has no filename?")
+            .to_string_lossy();
+
+        format!("{}-{:.12}", repo_name, self.revision)
+    }
+
+    pub fn discard_installed_gems(&mut self, install_path: &camino::Utf8PathBuf) {
+        use std::path::Path;
+
+        let install_dir_name = self.install_dir_name();
+
+        self.specs.retain(|_| {
+            let gem_path = install_path.join(format!("bundler/gems/{install_dir_name}"));
+
+            !Path::new(&gem_path).exists()
+        });
+    }
 }
 
 /// Rubygems server source that gems could come from.

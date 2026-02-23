@@ -503,11 +503,9 @@ fn install_git_repo(
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
     debug!("Installing git repo {:?}", repo);
-    let repo_path = Utf8PathBuf::from(&repo.remote());
-    let repo_name = repo_path.file_name().expect("repo has no filename?");
-    let repo_name = repo_name.strip_suffix(".git").unwrap_or(repo_name);
+    let repo_path = &repo.remote();
     let repo_sha = repo.sha();
-    let git_name = format!("{}-{:.12}", repo_name, repo_sha);
+    let git_name = repo.install_dir_name();
     let dest_dir = git_gems_dir.join(git_name);
     let mut just_cloned = false;
 
@@ -518,7 +516,7 @@ fn install_git_repo(
                 "clone",
                 "--quiet",
                 "--no-checkout",
-                repo_path.as_ref(),
+                repo_path,
                 dest_dir.as_ref(),
             ])
             .spawn()?
@@ -577,7 +575,7 @@ fn install_git_repo(
         }
     }
 
-    debug!("Installed repo {}", &repo_name);
+    debug!("Installed repo {}", repo_path);
 
     let cached_gemspecs_dir = config
         .cache
@@ -1169,6 +1167,10 @@ impl<'i> DownloadedGitRepo<'i> {
 
     pub fn submodules(&self) -> bool {
         self.source.submodules
+    }
+
+    pub fn install_dir_name(&self) -> String {
+        self.source.install_dir_name()
     }
 }
 

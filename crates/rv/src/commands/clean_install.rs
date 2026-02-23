@@ -503,10 +503,11 @@ fn install_git_repo(
     args: &CiInnerArgs,
 ) -> Result<Vec<GemSpecification>> {
     debug!("Installing git repo {:?}", repo);
-    let repo_path = Utf8PathBuf::from(&repo.remote);
+    let repo_path = Utf8PathBuf::from(&repo.remote());
     let repo_name = repo_path.file_name().expect("repo has no filename?");
     let repo_name = repo_name.strip_suffix(".git").unwrap_or(repo_name);
-    let git_name = format!("{}-{:.12}", repo_name, repo.sha);
+    let repo_sha = repo.sha();
+    let git_name = format!("{}-{:.12}", repo_name, repo_sha);
     let dest_dir = git_gems_dir.join(git_name);
     let mut just_cloned = false;
 
@@ -544,10 +545,10 @@ fn install_git_repo(
         }
     }
 
-    tracing::event!(tracing::Level::DEBUG, %repo_path, %dest_dir, %repo.sha, "resetting to the locked sha");
+    tracing::event!(tracing::Level::DEBUG, %repo_path, %dest_dir, %repo_sha, "resetting to the locked sha");
     let git_cloned = std::process::Command::new("git")
         .current_dir(&dest_dir)
-        .args(["reset", "--quiet", "--hard", &repo.sha])
+        .args(["reset", "--quiet", "--hard", &repo_sha])
         .spawn()?
         .wait()?;
     if !git_cloned.success() {
@@ -556,7 +557,7 @@ fn install_git_repo(
         });
     }
 
-    if repo.submodules {
+    if repo.submodules() {
         let get_submodules = std::process::Command::new("git")
             .current_dir(&dest_dir)
             .args([
@@ -589,8 +590,9 @@ fn install_git_repo(
     for path in glob(&pattern).expect("invalid glob pattern").flatten() {
         debug!("found gemspec at {:?}", path);
         // find the .gemspec file(s)
-        let gitsha = &repo.sha;
-        let dep = repo.specs.iter().find(|s| {
+        let gitsha = &repo_sha;
+        let specs = repo.specs();
+        let dep = specs.iter().find(|s| {
             path.to_string_lossy()
                 .contains(&format!("{}.gemspec", s.gem_version.name))
         });
@@ -718,11 +720,8 @@ fn download_git_repo<'i>(
 
     // Success! Save the paths of all the repos we just cloned.
     Ok(DownloadedGitRepo {
-        remote: git_source.remote.to_string(),
-        specs: git_source.specs.clone(),
-        sha: git_source.revision.to_string(),
+        source: git_source.clone(),
         path: git_repo_dir,
-        submodules: git_source.submodules,
     })
 }
 
@@ -1151,11 +1150,26 @@ struct DownloadedRubygems<'i> {
 /// A gem downloaded from a git source.
 #[derive(Debug)]
 struct DownloadedGitRepo<'i> {
-    remote: String,
+    source: GitSection<'i>,
     path: Utf8PathBuf,
-    specs: Vec<Spec<'i>>,
-    sha: String,
-    submodules: bool,
+}
+
+impl<'i> DownloadedGitRepo<'i> {
+    pub fn remote(&self) -> String {
+        self.source.remote.to_string()
+    }
+
+    pub fn specs(&self) -> Vec<Spec<'i>> {
+        self.source.specs.clone()
+    }
+
+    pub fn sha(&self) -> String {
+        self.source.revision.to_string()
+    }
+
+    pub fn submodules(&self) -> bool {
+        self.source.submodules
+    }
 }
 
 impl<'i> DownloadedRubygems<'i> {

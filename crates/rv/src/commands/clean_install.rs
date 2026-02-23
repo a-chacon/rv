@@ -183,7 +183,7 @@ pub(crate) async fn ci(global_args: &GlobalArgs, args: CleanInstallArgs) -> Resu
     // We need some Ruby installed, because we need to run Ruby code when installing
     // gems. Ensure Ruby is installed here so we can use it later.
     if config.current_ruby().is_none() {
-        ruby_install(global_args, None, None, None).await?;
+        ruby_install(global_args, None, None, None, false).await?;
     }
 
     // Now that it's installed, we can use Ruby to query various directories
@@ -241,7 +241,7 @@ pub(crate) async fn install_from_lockfile(
     // We need some Ruby installed, because we need to run Ruby code when installing
     // gems. Ensure Ruby is installed here so we can use it later.
     if config.current_ruby().is_none() {
-        ruby_install(global_args, None, request, None).await?;
+        ruby_install(global_args, None, request, None, false).await?;
     }
 
     let ruby = config

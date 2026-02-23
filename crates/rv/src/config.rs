@@ -167,6 +167,18 @@ impl Config {
             RequestedRuby::Global => RubyRequest::default(),
         }
     }
+
+    pub fn is_requested_ruby_installed_in_dir(&self, install_root: &Utf8Path) -> bool {
+        let requested_ruby_name = self.ruby_request().to_string();
+
+        let install_path = install_root.join(requested_ruby_name);
+
+        let managed = self.ruby_dirs.first().is_some_and(|d| *d == *install_root);
+
+        Ruby::from_dir(install_path, managed)
+            .map(|ruby| ruby.is_valid())
+            .unwrap_or(false)
+    }
 }
 
 fn xdg_data_path() -> Utf8PathBuf {

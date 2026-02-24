@@ -1015,6 +1015,34 @@ struct GemsCompiled {
     cached: usize,
 }
 
+#[derive(Default)]
+struct CompileNativeExtInfo<'a> {
+    nodes: HashMap<String, &'a GemSpecification>,
+
+    count: usize,
+}
+
+impl<'a> CompileNativeExtInfo<'a> {
+    pub fn count_one(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn add_node(&mut self, name: String, spec: &'a GemSpecification) {
+        self.nodes.insert(name, spec);
+    }
+
+    pub fn contains_key(&self, name: &'a String) -> bool {
+        self.nodes.contains_key(name)
+    }
+
+    pub fn get_if_has_extension(&self, name: &'a String) -> Option<&'a GemSpecification> {
+        self.nodes
+            .get(name)
+            .filter(|spec| !spec.extensions.is_empty())
+            .map(|v| &**v)
+    }
+}
+
 fn compile_gems(
     config: &Config,
     specs: Vec<GemSpecification>,
@@ -1024,7 +1052,10 @@ fn compile_gems(
     use dep_graph::DepGraph;
     use rayon::prelude::*;
 
-    let (nodes, deps, deps_count) = make_dep_graph(&specs);
+    let install_layout = &args.install_layout;
+
+    let (info, deps) = make_dep_graph(&specs, install_layout)?;
+    let deps_count = info.count;
 
     if deps_count == 0 {
         return Ok(Default::default());
@@ -1048,9 +1079,7 @@ fn compile_gems(
         .try_fold(
             || 0,
             |mut count, node| {
-                if let Some(spec) = nodes.get(&*node)
-                    && !spec.extensions.is_empty()
-                {
+                if let Some(spec) = info.get_if_has_extension(&node) {
                     span.pb_set_message(&spec.name);
                     let compile_stats = compile_gem(config, args, spec)?;
                     let compiled_ok = compile_stats.ok;
@@ -1078,26 +1107,26 @@ fn compile_gems(
 
 /// Build a dependency graph of all the gems which need compiling,
 /// and dependencies (i.e. which gems must be compiled before other gems)
-fn make_dep_graph(
-    specs: &[GemSpecification],
-) -> (
-    HashMap<String, &GemSpecification>,
-    Vec<dep_graph::Node<String>>,
-    usize,
-) {
+fn make_dep_graph<'a>(
+    specs: &'a [GemSpecification],
+    install_layout: &'a InstallLayout,
+) -> Result<(CompileNativeExtInfo<'a>, Vec<dep_graph::Node<String>>)> {
     use dep_graph::Node;
-    let mut nodes: HashMap<String, &GemSpecification> = HashMap::new();
-    let mut count = 0;
+    let mut info = CompileNativeExtInfo::default();
 
-    specs.iter().for_each(|spec| {
+    specs.iter().try_for_each(|spec| {
         let name = spec.name.clone();
 
         if !spec.extensions.is_empty() {
-            count += 1;
+            let ext_dest = install_layout.extensions_dir(&spec.full_name());
+            fs_err::create_dir_all(&ext_dest)?;
+            info.count_one();
         }
 
-        nodes.insert(name, spec);
-    });
+        info.add_node(name, spec);
+
+        Ok::<(), Error>(())
+    })?;
 
     let deps: Vec<_> = specs
         .iter()
@@ -1106,7 +1135,7 @@ fn make_dep_graph(
             let mut node = Node::new(name);
 
             for dep in &spec.dependencies {
-                if dep.is_runtime() && nodes.contains_key(&dep.name) {
+                if dep.is_runtime() && info.contains_key(&dep.name) {
                     node.add_dep(dep.name.clone());
                 }
             }
@@ -1114,7 +1143,7 @@ fn make_dep_graph(
             node
         })
         .collect();
-    (nodes, deps, count)
+    Ok((info, deps))
 }
 
 fn install_binstub(
@@ -1574,7 +1603,6 @@ fn compile_gem(
         }
     }
 
-    fs_err::create_dir_all(&ext_dest)?;
     let mut log = fs_err::File::create(ext_dest.join("build_ext.log"))?;
     for res in compile_results.iter() {
         for out in res.outputs.iter() {
@@ -1693,7 +1721,6 @@ fn build_extconf(
     // 2. Save the mkmf.log file if it exists
     let mkmf_log = ext_dir.join("mkmf.log");
     if mkmf_log.exists() {
-        fs_err::create_dir_all(ext_dest)?;
         fs_err::rename(mkmf_log, ext_dest.join("mkmf.log"))?;
     }
 
@@ -1970,6 +1997,14 @@ mod tests {
 
     #[test]
     fn test_dep_graph() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let install_layout = InstallLayout {
+            install_path: Utf8PathBuf::from_path_buf(temp_dir.path().to_path_buf()).unwrap(),
+            extensions_scope: "arm64-darwin-23/3.4.0-static".to_string(),
+        };
+
         // Serialized gemspecs (JSON).
         // I got these by running:
         // rv ruby run -- -e 'require "rubygems"; puts Gem::Specification.find_by_name("ffi").to_yaml' > crates/rv-gem-specification-yaml/tests/fixtures/ffi-1.17.3.gemspec.yaml
@@ -1991,14 +2026,22 @@ mod tests {
             .into_iter()
             .map(|s| rv_gem_specification_yaml::parse(s).unwrap())
             .collect();
-        let (_nodes, deps, count) = make_dep_graph(&specs);
-        assert_eq!(2, count);
+        let (info, deps) = make_dep_graph(&specs, &install_layout).unwrap();
+        assert_eq!(2, info.count);
         let dot = depgraph_to_graphviz(deps);
         insta::assert_snapshot!(dot);
     }
 
     #[test]
     fn test_dep_graph_missing_deps() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let install_layout = InstallLayout {
+            install_path: Utf8PathBuf::from_path_buf(temp_dir.path().to_path_buf()).unwrap(),
+            extensions_scope: "arm64-darwin-23/3.4.0-static".to_string(),
+        };
+
         let specs = [include_str!(
             "../../../rv-gem-specification-yaml/tests/fixtures/llhttp-ffi-0.4.0.gemspec.yaml"
         )];
@@ -2006,8 +2049,8 @@ mod tests {
             .into_iter()
             .map(|s| rv_gem_specification_yaml::parse(s).unwrap())
             .collect();
-        let (_nodes, deps, count) = make_dep_graph(&specs);
-        assert_eq!(1, count);
+        let (info, deps) = make_dep_graph(&specs, &install_layout).unwrap();
+        assert_eq!(1, info.count);
         let dot = depgraph_to_graphviz(deps);
         insta::assert_snapshot!(dot);
     }

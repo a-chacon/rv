@@ -81,7 +81,7 @@ struct CiInnerArgs {
     pub max_concurrent_installs: usize,
     pub validate_checksums: bool,
     pub install_path: Utf8PathBuf,
-    pub extensions_scope: Utf8PathBuf,
+    pub extensions_scope: String,
     /// Full path to the Ruby executable, used for Windows .bat binstub wrappers
     pub ruby_executable_path: Utf8PathBuf,
     /// Will install already installed gems
@@ -1377,7 +1377,7 @@ impl CompileNativeExtResult {
     }
 }
 
-fn find_exts_scope(config: &Config) -> Result<Utf8PathBuf> {
+fn find_exts_scope(config: &Config) -> Result<String> {
     debug!("Finding extensions scope");
     let exts_scope = crate::commands::ruby::run::run_no_install(
         Invocation::ruby(vec![]),
@@ -1391,9 +1391,7 @@ fn find_exts_scope(config: &Config) -> Result<Utf8PathBuf> {
     )?
     .stdout;
 
-    let extensions_scope = String::from_utf8(exts_scope)
-        .map(|s| Utf8PathBuf::from(s.trim()))
-        .map_err(|_| Error::BadBundlePath)?;
+    let extensions_scope = String::from_utf8(exts_scope).map_err(|_| Error::BadBundlePath)?;
     debug!("Found extensions scope: {extensions_scope}");
     Ok(extensions_scope)
 }

@@ -81,7 +81,7 @@ struct CiInnerArgs {
     pub max_concurrent_installs: usize,
     pub validate_checksums: bool,
     pub install_path: Utf8PathBuf,
-    pub extensions_dir: Utf8PathBuf,
+    pub extensions_scope: Utf8PathBuf,
     /// Full path to the Ruby executable, used for Windows .bat binstub wrappers
     pub ruby_executable_path: Utf8PathBuf,
     /// Will install already installed gems
@@ -192,7 +192,7 @@ pub(crate) async fn ci(global_args: &GlobalArgs, args: CleanInstallArgs) -> Resu
     let ruby = config
         .current_ruby()
         .expect("Ruby should be installed after the check above");
-    let extensions_dir = find_exts_dir(config)?;
+    let extensions_scope = find_exts_scope(config)?;
     let (lockfile_dir, lockfile_path) = find_manifest_paths(&args.gemfile)?;
     let install_path = find_install_path(config, &lockfile_dir, &ruby)?;
     let inner_args = CiInnerArgs {
@@ -200,7 +200,7 @@ pub(crate) async fn ci(global_args: &GlobalArgs, args: CleanInstallArgs) -> Resu
         max_concurrent_installs: args.max_concurrent_installs,
         validate_checksums: args.validate_checksums,
         install_path,
-        extensions_dir,
+        extensions_scope,
         ruby_executable_path: ruby.executable_path(),
         force: args.force,
     };
@@ -253,7 +253,7 @@ pub(crate) async fn install_from_lockfile(
         max_concurrent_installs: 20,
         validate_checksums: true,
         install_path,
-        extensions_dir: find_exts_dir(config)?,
+        extensions_scope: find_exts_scope(config)?,
         ruby_executable_path: ruby.executable_path(),
         force: true,
     };
@@ -1377,9 +1377,9 @@ impl CompileNativeExtResult {
     }
 }
 
-fn find_exts_dir(config: &Config) -> Result<Utf8PathBuf> {
-    debug!("Finding extensions dir");
-    let exts_dir = crate::commands::ruby::run::run_no_install(
+fn find_exts_scope(config: &Config) -> Result<Utf8PathBuf> {
+    debug!("Finding extensions scope");
+    let exts_scope = crate::commands::ruby::run::run_no_install(
         Invocation::ruby(vec![]),
         config,
         &[
@@ -1391,11 +1391,11 @@ fn find_exts_dir(config: &Config) -> Result<Utf8PathBuf> {
     )?
     .stdout;
 
-    let extensions_dir = String::from_utf8(exts_dir)
+    let extensions_scope = String::from_utf8(exts_scope)
         .map(|s| Utf8PathBuf::from(s.trim()))
         .map_err(|_| Error::BadBundlePath)?;
-    debug!("Found extensions dir: {extensions_dir}");
-    Ok(extensions_dir)
+    debug!("Found extensions scope: {extensions_scope}");
+    Ok(extensions_scope)
 }
 
 static EXTCONF_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)extconf").unwrap());
@@ -1424,7 +1424,7 @@ fn compile_gem(
     let lib_dest = gem_path.join("lib");
     let ext_dest = gem_home
         .join("extensions")
-        .join(&args.extensions_dir)
+        .join(&args.extensions_scope)
         .join(spec.full_name());
     let mut ran_rake = false;
 

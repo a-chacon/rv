@@ -48,6 +48,13 @@ setup_rv() {
     fi
 }
 
+# Run `rv ci` and make sure it was a noop by checking its output
+check_rv_ci_noop() {
+  rv ci > output.txt
+  grep -v "gems installed to" output.txt || (cat output.txt && exit 1)
+  grep "gems already installed in" output.txt || (cat output.txt && exit 1)
+}
+
 # Print success message
 smoke_test_success() {
     local project="$1"

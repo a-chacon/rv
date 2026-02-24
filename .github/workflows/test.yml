@@ -33,6 +33,28 @@ jobs:
         with:
           command: check ${{ matrix.checks }}
 
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build rv
+        run: bin/build
+
+      - name: Upload rv binary
+        uses: actions/upload-artifact@v5
+        with:
+          name: rv-binary
+          path: target/release/rv
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -97,3 +119,37 @@ jobs:
       - name: Run Unix integration tests
         if: ${{ ! startsWith(matrix.runs-on, 'windows') }}
         run: ./bin/test-integration
+
+  smoke-test:
+    name: ${{ matrix.project }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - diaspora
+          - discourse
+          - fastlane
+          # - gitlab  # Disabled until https://gitlab.com/gitlab-org/gitlab/-/issues/522903 is resolved
+          - homebrew
+          - huginn
+          - llhttp-ffi
+          - lobsters
+          - local-gemspec
+          - mastodon
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+
+      - name: Download rv binary
+        uses: actions/download-artifact@v5
+        with:
+          name: rv-binary
+          path: ~/bin
+
+      - name: Add rv to PATH
+        run: chmod +x ~/bin/rv && echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: rv clean-install for ${{ matrix.project }}
+        run: bin/smoke-tests/${{ matrix.project }}

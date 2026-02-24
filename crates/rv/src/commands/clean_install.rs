@@ -153,6 +153,8 @@ pub enum Error {
     UrlError(#[from] url::ParseError),
     #[error("Could not read install directory from Bundler")]
     BadBundlePath,
+    #[error("Could not read extensions scope from RubyGems")]
+    BadExtensionsScope,
     #[error("File {filename} did not match {algo} locked checksum in gem {gem_name}")]
     LockfileChecksumFail {
         filename: String,
@@ -1391,7 +1393,8 @@ fn find_exts_scope(config: &Config) -> Result<String> {
     )?
     .stdout;
 
-    let extensions_scope = String::from_utf8(exts_scope).map_err(|_| Error::BadBundlePath)?;
+    let extensions_scope = String::from_utf8(exts_scope)
+        .map_err(|_| Error::BadExtensionsScope)?;
     debug!("Found extensions scope: {extensions_scope}");
     Ok(extensions_scope)
 }

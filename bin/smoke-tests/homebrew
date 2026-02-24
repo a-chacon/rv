@@ -20,9 +20,9 @@ cd brew/Library/Homebrew
 rv ci
 
 # Check no gems are reinstalled
-rv ci > output.txt && cat output.txt
-grep -v "gems installed to" output.txt
-grep "gems already installed in" output.txt
+rv ci > output.txt
+grep -v "gems installed to" output.txt || (cat output.txt && exit 1)
+grep "gems already installed in" output.txt || (cat output.txt && exit 1)
 
 rv run bundle check
 

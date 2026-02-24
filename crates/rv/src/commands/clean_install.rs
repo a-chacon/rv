@@ -1507,24 +1507,25 @@ fn compile_gem(
 
     let install_layout = &args.install_layout;
     let gem_home = &install_layout.install_path;
-    let gem_path = install_layout.gem_path(&spec.full_name());
+    let full_name = spec.full_name();
+    let gem_path = install_layout.gem_path(&full_name);
     let lib_dest = gem_path.join("lib");
     let ext_dest = gem_home
         .join("extensions")
         .join(&args.extensions_scope)
-        .join(spec.full_name());
+        .join(&full_name);
     let mut ran_rake = false;
 
     let build_complete_path = cached_compile_path(&ext_dest);
     debug!("Checking for {}", build_complete_path);
     if std::fs::exists(&build_complete_path)? {
-        debug!("native extensions for {} already built", spec.full_name());
+        debug!("native extensions for {} already built", full_name);
         return Ok(CompileStats {
             ok: true,
             is_cached: true,
         });
     }
-    debug!("compiling native extensions for {}", spec.full_name());
+    debug!("compiling native extensions for {}", full_name);
 
     for extstr in spec.extensions.clone() {
         let extension = extstr.as_ref();
@@ -1552,7 +1553,7 @@ fn compile_gem(
         } else {
             return Err(Error::UnknownExtension {
                 filename: extension.to_string(),
-                gemname: spec.full_name(),
+                gemname: full_name,
             });
         }
     }
@@ -1573,7 +1574,7 @@ fn compile_gem(
         for out in res.outputs.iter() {
             eprintln!(
                 "Warning: Could not compile gem {}'s extension {}. Got exit code {}.",
-                spec.full_name().yellow(),
+                full_name.yellow(),
                 res.extension.yellow(),
                 out.status
                     .code()

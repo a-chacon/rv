@@ -81,7 +81,6 @@ struct CiInnerArgs {
     pub max_concurrent_installs: usize,
     pub validate_checksums: bool,
     pub install_layout: InstallLayout,
-    pub extensions_scope: String,
     /// Full path to the Ruby executable, used for Windows .bat binstub wrappers
     pub ruby_executable_path: Utf8PathBuf,
     /// Will install already installed gems
@@ -91,6 +90,8 @@ struct CiInnerArgs {
 #[derive(Debug)]
 struct InstallLayout {
     install_path: Utf8PathBuf,
+
+    extensions_scope: String,
 }
 
 impl InstallLayout {
@@ -119,6 +120,13 @@ impl InstallLayout {
         let install_dir_name = format!("{}-{:.12}", repo_name, git_section.revision);
         self.install_path
             .join(format!("bundler/gems/{install_dir_name}"))
+    }
+
+    pub fn extensions_dir(&self, full_version: &str) -> Utf8PathBuf {
+        self.install_path
+            .join("extensions")
+            .join(self.extensions_scope.clone())
+            .join(full_version)
     }
 }
 
@@ -235,8 +243,10 @@ pub(crate) async fn ci(global_args: &GlobalArgs, args: CleanInstallArgs) -> Resu
         max_concurrent_requests: args.max_concurrent_requests,
         max_concurrent_installs: args.max_concurrent_installs,
         validate_checksums: args.validate_checksums,
-        install_layout: InstallLayout { install_path },
-        extensions_scope,
+        install_layout: InstallLayout {
+            install_path,
+            extensions_scope,
+        },
         ruby_executable_path: ruby.executable_path(),
         force: args.force,
     };
@@ -284,12 +294,15 @@ pub(crate) async fn install_from_lockfile(
     let ruby = config
         .current_ruby()
         .expect("Ruby should be installed after the check above");
+    let extensions_scope = find_exts_scope(config)?;
     let inner_args = CiInnerArgs {
         max_concurrent_requests: 10,
         max_concurrent_installs: 20,
         validate_checksums: true,
-        install_layout: InstallLayout { install_path },
-        extensions_scope: find_exts_scope(config)?,
+        install_layout: InstallLayout {
+            install_path,
+            extensions_scope,
+        },
         ruby_executable_path: ruby.executable_path(),
         force: true,
     };
@@ -460,8 +473,12 @@ fn discard_installed_gems(lockfile: &mut GemfileDotLock, install_layout: &Instal
             let full_version = &spec.gem_version.to_string();
             let gem_path = install_layout.gem_path(full_version);
             let spec_path = install_layout.spec_path(full_version);
+            let extensions_dir = install_layout.extensions_dir(full_version);
+            let ext_path = cached_compile_path(&extensions_dir);
 
-            !Path::new(&gem_path).exists() || !Path::new(&spec_path).exists()
+            !Path::new(&gem_path).exists()
+                || !Path::new(&spec_path).exists()
+                || (Path::new(&extensions_dir).exists() && !Path::new(&ext_path).exists())
         })
     });
 
@@ -1510,10 +1527,7 @@ fn compile_gem(
     let full_name = spec.full_name();
     let gem_path = install_layout.gem_path(&full_name);
     let lib_dest = gem_path.join("lib");
-    let ext_dest = gem_home
-        .join("extensions")
-        .join(&args.extensions_scope)
-        .join(&full_name);
+    let ext_dest = install_layout.extensions_dir(&full_name);
     let mut ran_rake = false;
 
     let build_complete_path = cached_compile_path(&ext_dest);
@@ -2180,6 +2194,7 @@ SHA512:
         let mut lockfile = rv_lockfile::parse(input).unwrap();
         let install_layout = InstallLayout {
             install_path: install_path.clone(),
+            extensions_scope: "arm64-darwin-23/3.4.0-static".to_string(),
         };
 
         // A fake installed gem (We check based on dir, so just a dir with the name is enough)

@@ -281,11 +281,11 @@ async fn ci_inner_work(
     // over generic "ruby" platform gems. This ensures we use prebuilt binaries
     // (like libv8-node-24.1.0.0-x86_64-linux.gem) instead of compiling from
     // source (libv8-node-24.1.0.0.gem).
-    lockfile.retain_gems_to_be_installed();
+    retain_gems_to_be_installed(&mut lockfile);
 
     if !args.force {
         let original_count = lockfile.spec_count();
-        lockfile.discard_installed_gems(install_path);
+        discard_installed_gems(&mut lockfile, install_path);
         let filtered_count = lockfile.spec_count();
 
         let already_installed = original_count.saturating_sub(filtered_count);
@@ -378,6 +378,71 @@ async fn ci_inner_work(
     Ok(InstallStats {
         executables_installed,
     })
+}
+
+fn retain_gems_to_be_installed(lockfile: &mut GemfileDotLock) {
+    lockfile.gem.iter_mut().for_each(|gem_section| {
+        use rv_gem_types::VersionPlatform;
+        use std::collections::HashMap;
+        use std::str::FromStr;
+
+        let mut by_name: HashMap<&str, Spec> = HashMap::new();
+        for spec in &gem_section.specs {
+            let gem_version = spec.gem_version;
+
+            let Ok(vp) = VersionPlatform::from_str(gem_version.version) else {
+                continue;
+            };
+
+            if !vp.platform.is_local() {
+                continue;
+            }
+
+            if let Some(other_spec) = by_name.get_mut(gem_version.name) {
+                let Ok(other_vp) = VersionPlatform::from_str(other_spec.gem_version.version) else {
+                    continue;
+                };
+
+                if vp > other_vp {
+                    *other_spec = spec.clone();
+                }
+            } else {
+                by_name.insert(gem_version.name, spec.clone());
+            }
+        }
+
+        gem_section
+            .specs
+            .retain(|spec| by_name.get(spec.gem_version.name) == Some(spec))
+    })
+}
+
+fn discard_installed_gems(lockfile: &mut GemfileDotLock, install_path: &Utf8PathBuf) {
+    lockfile.gem.iter_mut().for_each(|gem_section| {
+        use std::path::Path;
+
+        gem_section.specs.retain(|spec| {
+            let full_version = spec.gem_version;
+            let gem_path = install_path.join(format!("gems/{full_version}"));
+            let spec_path = install_path.join(format!("specifications/{full_version}.gemspec"));
+
+            !Path::new(&gem_path).exists() || !Path::new(&spec_path).exists()
+        })
+    });
+
+    lockfile.gem.retain(|section| !section.specs.is_empty());
+
+    lockfile.git.iter_mut().for_each(|git_section| {
+        use std::path::Path;
+
+        let install_dir_name = git_section.install_dir_name();
+
+        git_section
+            .specs
+            .retain(|_| !Path::new(&install_dir_name).exists())
+    });
+
+    lockfile.git.retain(|section| !section.specs.is_empty());
 }
 
 fn install_paths<'i>(
@@ -2076,6 +2141,113 @@ SHA512:
         assert_eq!(
             "c7271aa96826b53e9ae015b4163fbe4f6256cc9101cae95bdde1ee8801cf9a156eaf9c1a678c87cb1d49b2c7b09e2b29f02487394bee0092e4d57fc1952c4c62",
             &hex::encode(sha512.data_tar_gz)
+        );
+    }
+
+    #[test]
+    fn test_discard_installed_gems() {
+        use camino::Utf8PathBuf;
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let install_path = Utf8PathBuf::from_path_buf(temp_dir.path().to_path_buf()).unwrap();
+
+        let input = include_str!("../../../rv-lockfile/tests/inputs/Gemfile.twosources.lock");
+
+        let mut lockfile = rv_lockfile::parse(input).unwrap();
+
+        // A fake installed gem (We check based on dir, so just a dir with the name is enough)
+        let installed_gem_dir = install_path.join("gems").join("rake-13.3.0");
+        fs::create_dir_all(&installed_gem_dir).unwrap();
+
+        discard_installed_gems(&mut lockfile, &install_path);
+
+        assert_eq!(lockfile.gem_spec_count(), 2);
+        assert_eq!(lockfile.gem[0].specs[0].gem_version.name, "rake");
+        assert_eq!(lockfile.gem[1].specs[0].gem_version.name, "rack");
+
+        let mut lockfile = rv_lockfile::parse(input).unwrap();
+
+        // A fake installed specification (We check based on file presence, so just an empty file is enough)
+        let specifications_dir = install_path.join("specifications");
+        fs::create_dir_all(&specifications_dir).unwrap();
+        let installed_specification = specifications_dir.join("rake-13.3.0.gemspec");
+        fs::write(&installed_specification, "").unwrap();
+
+        discard_installed_gems(&mut lockfile, &install_path);
+
+        assert_eq!(lockfile.gem_spec_count(), 1);
+        assert_eq!(lockfile.gem[0].specs[0].gem_version.name, "rack");
+    }
+
+    #[test]
+    fn test_prefer_platform_specific_gems() {
+        // Use the real Discourse lockfile fixture which has libv8-node with
+        // multiple platform variants (ruby, x86_64-linux, aarch64-linux, etc.)
+        let input = include_str!("../../../rv-lockfile/tests/inputs/Gemfile.discourse.lock");
+        let mut lockfile = rv_lockfile::parse(input).unwrap();
+
+        // Get all specs from the gem sources
+        let all_specs: Vec<_> = lockfile
+            .gem
+            .clone()
+            .into_iter()
+            .flat_map(|section| section.specs)
+            .collect();
+
+        // Count how many libv8-node variants exist before filtering
+        let libv8_before: Vec<_> = all_specs
+            .iter()
+            .filter(|s| s.gem_version.name == "libv8-node")
+            .collect();
+        assert!(
+            libv8_before.len() > 1,
+            "fixture should have multiple libv8-node variants, found {}",
+            libv8_before.len()
+        );
+
+        retain_gems_to_be_installed(&mut lockfile);
+
+        // Get all specs filtered by platform specific
+        let filtered_specs: Vec<_> = lockfile
+            .gem
+            .clone()
+            .into_iter()
+            .flat_map(|section| section.specs)
+            .collect();
+
+        // Should only have ONE libv8-node after filtering
+        let libv8_after: Vec<_> = filtered_specs
+            .iter()
+            .filter(|s| s.gem_version.name == "libv8-node")
+            .collect();
+        assert_eq!(
+            libv8_after.len(),
+            1,
+            "should have exactly one libv8-node after filtering, found {}",
+            libv8_after.len()
+        );
+
+        // Verify the correct platform was chosen for the current machine
+        let libv8 = libv8_after[0];
+
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let expected_version = "24.1.0.0-arm64-darwin";
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let expected_version = "24.1.0.0-x86_64-darwin";
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        let expected_version = "24.1.0.0-aarch64-linux";
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let expected_version = "24.1.0.0-x86_64-linux";
+        // No Windows-specific libv8-node variant in the fixture, so the generic
+        // (ruby platform) variant is selected.
+        #[cfg(target_os = "windows")]
+        let expected_version = "24.1.0.0";
+
+        assert_eq!(
+            libv8.gem_version.version, expected_version,
+            "should select platform-specific version for current platform"
         );
     }
 }

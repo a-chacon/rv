@@ -47,26 +47,6 @@ impl GemfileDotLock<'_> {
             + self.git.iter().map(|s| s.specs.len()).sum::<usize>()
             + self.path.iter().map(|s| s.specs.len()).sum::<usize>()
     }
-
-    pub fn retain_gems_to_be_installed(&mut self) {
-        self.gem
-            .iter_mut()
-            .for_each(|gem_section| gem_section.retain_gems_to_be_installed());
-    }
-
-    pub fn discard_installed_gems(&mut self, install_path: &camino::Utf8PathBuf) {
-        self.gem
-            .iter_mut()
-            .for_each(|gem_section| gem_section.discard_installed_gems(install_path));
-
-        self.gem.retain(|section| !section.specs.is_empty());
-
-        self.git
-            .iter_mut()
-            .for_each(|git_section| git_section.discard_installed_gems(install_path));
-
-        self.git.retain(|section| !section.specs.is_empty());
-    }
 }
 
 /// Git source that gems could come from.
@@ -103,18 +83,6 @@ impl<'i> GitSection<'i> {
 
         format!("{}-{:.12}", repo_name, self.revision)
     }
-
-    pub fn discard_installed_gems(&mut self, install_path: &camino::Utf8PathBuf) {
-        use std::path::Path;
-
-        let install_dir_name = self.install_dir_name();
-
-        self.specs.retain(|_| {
-            let gem_path = install_path.join(format!("bundler/gems/{install_dir_name}"));
-
-            !Path::new(&gem_path).exists()
-        });
-    }
 }
 
 /// Rubygems server source that gems could come from.
@@ -125,54 +93,6 @@ pub struct GemSection<'i> {
     pub remote: &'i str,
     /// All gems which came from this source in particular.
     pub specs: Vec<Spec<'i>>,
-}
-
-impl<'i> GemSection<'i> {
-    pub fn retain_gems_to_be_installed(&mut self) {
-        use rv_gem_types::VersionPlatform;
-        use std::collections::HashMap;
-        use std::str::FromStr;
-
-        let mut by_name: HashMap<&str, Spec<'i>> = HashMap::new();
-        for spec in &self.specs {
-            let gem_version = spec.gem_version;
-
-            let Ok(vp) = VersionPlatform::from_str(gem_version.version) else {
-                continue;
-            };
-
-            if !vp.platform.is_local() {
-                continue;
-            }
-
-            if let Some(other_spec) = by_name.get_mut(gem_version.name) {
-                let Ok(other_vp) = VersionPlatform::from_str(other_spec.gem_version.version) else {
-                    continue;
-                };
-
-                if vp > other_vp {
-                    *other_spec = spec.clone();
-                }
-            } else {
-                by_name.insert(gem_version.name, spec.clone());
-            }
-        }
-
-        self.specs
-            .retain(|spec| by_name.get(spec.gem_version.name) == Some(spec))
-    }
-
-    pub fn discard_installed_gems(&mut self, install_path: &camino::Utf8PathBuf) {
-        use std::path::Path;
-
-        self.specs.retain(|spec| {
-            let full_version = spec.gem_version;
-            let gem_path = install_path.join(format!("gems/{full_version}"));
-            let spec_path = install_path.join(format!("specifications/{full_version}.gemspec"));
-
-            !Path::new(&gem_path).exists() || !Path::new(&spec_path).exists()
-        });
-    }
 }
 
 /// Filesystem path that gems could come from.

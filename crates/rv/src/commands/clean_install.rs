@@ -1496,7 +1496,9 @@ fn find_exts_scope(config: &Config) -> Result<String> {
     )?
     .stdout;
 
-    let extensions_scope = String::from_utf8(exts_scope).map_err(|_| Error::BadExtensionsScope)?;
+    let extensions_scope = String::from_utf8(exts_scope)
+        .map(|s| s.trim().to_string())
+        .map_err(|_| Error::BadExtensionsScope)?;
     debug!("Found extensions scope: {extensions_scope}");
     Ok(extensions_scope)
 }

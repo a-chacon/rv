@@ -53,7 +53,7 @@ pub enum Error {
 
 type Result<T> = miette::Result<T, Error>;
 
-impl Config {
+impl Config<'_> {
     /// Discover all remotely available Ruby versions with caching.
     ///
     /// On Windows, fetches from `oneclick/rubyinstaller2` (one release per Ruby version).

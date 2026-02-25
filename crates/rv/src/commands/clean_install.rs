@@ -313,7 +313,7 @@ pub(crate) async fn install_from_lockfile(
 }
 
 async fn ci_inner_work(
-    config: &Config,
+    config: &Config<'_>,
     args: &CiInnerArgs,
     progress: &WorkProgress,
     mut lockfile: GemfileDotLock<'_>,
@@ -371,7 +371,7 @@ async fn ci_inner_work(
 
     let gem_fetch_start = Instant::now();
     let stats = DownloadStats::default();
-    let downloaded = download_gems(&lockfile, &config.cache, args, progress, &stats).await?;
+    let downloaded = download_gems(config, &lockfile, args, progress, &stats).await?;
     let downloaded_count = downloaded.len();
     let gem_fetch_elapsed = gem_fetch_start.elapsed();
 
@@ -1177,8 +1177,8 @@ impl DownloadStats {
 
 /// Downloads all Rubygem server gems from a Gemfile.lock
 async fn download_gems<'i>(
+    config: &Config<'_>,
     lockfile: &GemfileDotLock<'i>,
-    cache: &rv_cache::Cache,
     args: &CiInnerArgs,
     progress: &WorkProgress,
     stats: &DownloadStats,
@@ -1222,16 +1222,8 @@ async fn download_gems<'i>(
             let checksums = &checksums;
             let span = &span;
             async move {
-                download_gem_source(
-                    gem_source,
-                    checksums,
-                    cache,
-                    args.max_concurrent_requests,
-                    progress,
-                    stats,
-                    span,
-                )
-                .await
+                download_gem_source(config, gem_source, checksums, args, progress, stats, span)
+                    .await
             }
         })
         .buffered(args.max_concurrent_requests)
@@ -1827,15 +1819,14 @@ fn url_for_spec(remote: &str, spec: &Spec<'_>) -> Result<Url> {
 /// Downloads all gems from a particular gem source,
 /// e.g. from gems.coop or rubygems or something.
 async fn download_gem_source<'i>(
+    config: &Config<'_>,
     gem_source: &GemSection<'i>,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
-    cache: &rv_cache::Cache,
-    max_concurrent_requests: usize,
+    args: &CiInnerArgs,
     progress: &WorkProgress,
     stats: &DownloadStats,
     span: &tracing::Span,
 ) -> Result<Vec<DownloadedRubygems>> {
-    // TODO: If the gem server needs user credentials, accept them and add them to this client.
     let client = rv_http_client()?;
 
     // Download them all, concurrently.
@@ -1845,10 +1836,10 @@ async fn download_gem_source<'i>(
             let client = &client;
             async move {
                 let result = download_gem(
+                    config,
                     gem_source.remote,
                     spec,
                     client,
-                    cache,
                     checksums,
                     stats,
                     span,
@@ -1859,7 +1850,7 @@ async fn download_gem_source<'i>(
                 result
             }
         })
-        .buffered(max_concurrent_requests)
+        .buffered(args.max_concurrent_requests)
         .try_collect()
         .await?;
     debug!(
@@ -1871,17 +1862,18 @@ async fn download_gem_source<'i>(
 
 /// Download a single gem, from the given URL, using the given client.
 async fn download_gem<'i>(
+    config: &Config<'_>,
     remote: &str,
     spec: &Spec<'i>,
     client: &Client,
-    cache: &rv_cache::Cache,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     stats: &DownloadStats,
     span: &tracing::Span,
 ) -> Result<DownloadedRubygems> {
-    let url = url_for_spec(remote, spec)?;
+    let mut url = url_for_spec(remote, spec)?;
     let cache_key = rv_cache::cache_digest(url.as_ref());
-    let cache_path = cache
+    let cache_path = config
+        .cache
         .shard(rv_cache::CacheBucket::Gem, "gems")
         .into_path_buf()
         .join(format!("{cache_key}.gem"));
@@ -1894,6 +1886,13 @@ async fn download_gem<'i>(
     } else {
         debug!("Downloading gem from {url}");
         stats.downloaded_one();
+
+        if let Some(host) = url.host_str()
+            && let Some(token) = config.bundler_settings.token_for(host)
+        {
+            let _ = url.set_username(&token);
+        }
+
         client
             .get(url.clone())
             .send()

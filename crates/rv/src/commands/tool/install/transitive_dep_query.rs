@@ -23,7 +23,7 @@ pub(crate) struct CachedGemDeps {
 }
 
 pub(crate) async fn query_all_gem_deps(
-    config: &Config,
+    config: &Config<'_>,
     gems_to_deps: &mut HashMap<String, Vec<GemRelease>>,
     root: GemRelease,
     root_gem_name: &str,

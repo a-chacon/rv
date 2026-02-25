@@ -46,7 +46,7 @@ impl JsonRubyEntry {
 }
 
 impl tabled::Tabled for JsonRubyEntry {
-    const LENGTH: usize = 3;
+    const LENGTH: usize = 2;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
         let name = if self.active {
@@ -57,29 +57,20 @@ impl tabled::Tabled for JsonRubyEntry {
 
         let installed = if self.installed {
             if self.color {
-                "[installed]".green().to_string().into()
+                self.ruby.executable_path().cyan().to_string().into()
             } else {
-                "[installed]".to_string().into()
+                self.ruby.executable_path().to_string().into()
             }
         } else if self.color {
             "[available]".dimmed().to_string().into()
         } else {
             "[available]".to_string().into()
         };
-        let path = if self.installed {
-            if self.color {
-                self.ruby.executable_path().cyan().to_string().into()
-            } else {
-                self.ruby.executable_path().to_string().into()
-            }
-        } else {
-            "".into()
-        };
-        vec![name.into(), installed, path]
+        vec![name.into(), installed]
     }
 
     fn headers() -> Vec<Cow<'static, str>> {
-        vec!["Version".into(), "Installed".into(), "Path".into()]
+        vec!["Version".into(), "Installed".into()]
     }
 }
 

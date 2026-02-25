@@ -32,7 +32,7 @@ type Result<T> = miette::Result<T, Error>;
 #[cfg_attr(test, derive(PartialEq))]
 struct JsonRubyEntry {
     #[serde(flatten)]
-    details: Ruby,
+    ruby: Ruby,
     installed: bool,
     active: bool,
     #[serde(skip)]
@@ -40,19 +40,19 @@ struct JsonRubyEntry {
 }
 
 impl JsonRubyEntry {
-    fn installed(details: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(details, true, active_ruby)
+    fn installed(ruby: Ruby, active_ruby: &Option<Ruby>) -> Self {
+        Self::new(ruby, true, active_ruby)
     }
 
-    fn available(details: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(details, false, active_ruby)
+    fn available(ruby: Ruby, active_ruby: &Option<Ruby>) -> Self {
+        Self::new(ruby, false, active_ruby)
     }
 
-    fn new(details: Ruby, installed: bool, active_ruby: &Option<Ruby>) -> Self {
+    fn new(ruby: Ruby, installed: bool, active_ruby: &Option<Ruby>) -> Self {
         JsonRubyEntry {
-            active: active_ruby.as_ref().is_some_and(|a| a == &details),
+            active: active_ruby.as_ref().is_some_and(|a| a == &ruby),
             installed,
-            details,
+            ruby,
             color: true,
         }
     }
@@ -67,9 +67,9 @@ impl tabled::Tabled for JsonRubyEntry {
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
         let name = if self.active {
-            format!("* {}", self.details.version)
+            format!("* {}", self.ruby.version)
         } else {
-            format!("  {}", self.details.version)
+            format!("  {}", self.ruby.version)
         };
 
         let installed = if self.installed {
@@ -85,9 +85,9 @@ impl tabled::Tabled for JsonRubyEntry {
         };
         let path = if self.installed {
             if self.color {
-                self.details.executable_path().cyan().to_string().into()
+                self.ruby.executable_path().cyan().to_string().into()
             } else {
-                self.details.executable_path().to_string().into()
+                self.ruby.executable_path().to_string().into()
             }
         } else {
             "".into()
@@ -170,7 +170,7 @@ pub(crate) async fn list(
                 rubies_map
                     .entry(details.version.clone())
                     .or_insert(vec![JsonRubyEntry {
-                        details,
+                        ruby: details,
                         installed: false,
                         active: true,
                         color: true,

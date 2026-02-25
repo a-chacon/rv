@@ -164,13 +164,11 @@ pub(crate) async fn list(
         let insert_requested_if_available = || {
             let ruby = requested.find_match_in(&remote_rubies);
 
-            if ruby.is_some() {
-                let details = ruby.clone().unwrap();
-
+            if let Some(ref ruby) = ruby {
                 rubies_map
-                    .entry(details.version.clone())
+                    .entry(ruby.version.clone())
                     .or_insert(vec![JsonRubyEntry {
-                        ruby: details,
+                        ruby: ruby.clone(),
                         installed: false,
                         active: true,
                         color: true,

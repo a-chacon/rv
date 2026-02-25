@@ -15,7 +15,7 @@ type Result<T> = miette::Result<T, Error>;
 
 pub fn env(config: &config::Config, shell: Shell) -> Result<()> {
     let ruby = config.current_ruby();
-    let (unset, set) = config::env_for(ruby.as_ref())?;
+    let (unset, set) = config.env_for(ruby.as_ref())?.split();
 
     match shell {
         Shell::Zsh | Shell::Bash => {
@@ -139,6 +139,7 @@ mod tests {
             current_exe: root.join("bin").join("rv"),
             requested_ruby: RequestedRuby::Explicit("3.5.0".parse().unwrap()),
             cache: rv_cache::Cache::temp().unwrap(),
+            project_root: root,
         };
 
         Ok(config)

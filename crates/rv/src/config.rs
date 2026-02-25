@@ -285,6 +285,17 @@ impl Config<'_> {
     }
 }
 
+pub fn unexpand(path: &Utf8PathBuf) -> String {
+    let mut truncated = path
+        .strip_prefix(rv_dirs::home_dir())
+        .unwrap_or(path)
+        .to_string();
+
+    truncated.insert_str(0, "~/");
+
+    truncated
+}
+
 fn xdg_data_path() -> Utf8PathBuf {
     rv_dirs::user_state_dir("/".into()).join("rubies")
 }

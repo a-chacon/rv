@@ -64,6 +64,23 @@ pub enum RequestedRuby {
     Global,
 }
 
+impl RequestedRuby {
+    pub fn explain(&self) -> String {
+        match self {
+            Self::Explicit(_) => "Active version explicitly requested".to_string(),
+            Self::Project((_, source)) => format!(
+                "Active version requested by {}",
+                crate::config::relativize(source.path())
+            ),
+            Self::User((_, source)) => format!(
+                "Active version requested by {}",
+                crate::config::unexpand(source.path())
+            ),
+            Self::Global => "Active version selected by default".to_string(),
+        }
+    }
+}
+
 impl Config<'_> {
     pub(crate) fn new(global_args: &GlobalArgs, request: Option<RubyRequest>) -> Result<Self> {
         let root = Utf8PathBuf::from(env::var("RV_ROOT_DIR").unwrap_or("/".to_owned()));
@@ -283,6 +300,28 @@ impl Config<'_> {
 
         Ok(env)
     }
+}
+
+pub fn relativize(path: &Utf8PathBuf) -> String {
+    let Some(current_dir) = std::env::current_dir().ok() else {
+        return path.to_string();
+    };
+
+    let Some(file_name) = path.file_name().map(|f| f.to_string()) else {
+        return path.to_string();
+    };
+
+    let mut relative_path = file_name.clone();
+
+    for dir in current_dir.ancestors() {
+        if dir.join(&file_name).is_file() {
+            return relative_path;
+        }
+
+        relative_path.insert_str(0, "../");
+    }
+
+    relative_path
 }
 
 pub fn unexpand(path: &Utf8PathBuf) -> String {

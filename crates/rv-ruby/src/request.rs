@@ -62,6 +62,16 @@ impl std::fmt::Debug for Source {
     }
 }
 
+impl Source {
+    pub fn path(&self) -> &Utf8PathBuf {
+        match self {
+            Self::DotToolVersions(arg0) => arg0,
+            Self::DotRubyVersion(arg0) => arg0,
+            Self::GemfileLock(arg0) => arg0,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum RequestError {
     #[error("Empty input")]

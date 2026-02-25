@@ -1,7 +1,10 @@
 use clap::Args;
 use std::io;
 use std::{borrow::Cow, collections::BTreeMap};
-use tabled::{Table, settings::Style};
+use tabled::{
+    Table,
+    settings::{Panel, Span, Style, style::HorizontalLine, themes::BorderCorrection},
+};
 
 use anstream::println;
 use owo_colors::OwoColorize;
@@ -9,7 +12,11 @@ use rv_ruby::{Ruby, version::ReleasedRubyVersion};
 use serde::Serialize;
 use tracing::{info, warn};
 
-use crate::{GlobalArgs, config::Config, output_format::OutputFormat};
+use crate::{
+    GlobalArgs,
+    config::{Config, RequestedRuby},
+    output_format::OutputFormat,
+};
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum Error {
@@ -175,7 +182,7 @@ pub(crate) async fn list(
     // Create entries for output
     let entries: Vec<JsonRubyEntry> = rubies_map.into_values().flatten().collect();
 
-    print_entries(entries, format, no_color)
+    print_entries(entries, format, no_color, &config.requested_ruby)
 }
 
 fn active(ruby: &Ruby, active_ruby: &Option<Ruby>) -> bool {
@@ -222,6 +229,7 @@ fn print_entries(
     mut entries: Vec<JsonRubyEntry>,
     format: OutputFormat,
     no_color: bool,
+    requested_ruby: &RequestedRuby,
 ) -> Result<()> {
     match format {
         OutputFormat::Text => {
@@ -230,8 +238,18 @@ fn print_entries(
                     e.no_color();
                 }
             }
+            let size = entries.len() + 1;
             let mut table = Table::new(entries);
-            table.with(Style::sharp());
+            let style = Style::sharp().horizontals([
+                (1, HorizontalLine::full('─', '┼', '├', '┤')),
+                (size, HorizontalLine::full('─', '┼', '├', '┤')),
+            ]);
+            table
+                .with(Panel::footer(requested_ruby.explain()))
+                .with(style)
+                .modify((size, 0), Span::column(0))
+                .with(BorderCorrection::span());
+
             println!("{table}");
         }
         OutputFormat::Json => {

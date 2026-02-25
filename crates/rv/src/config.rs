@@ -124,6 +124,27 @@ impl Config {
         })
     }
 
+    #[cfg(test)]
+    pub fn new_dummy() -> Self {
+        use assert_fs::TempDir;
+        use indexmap::indexset;
+        use rv_cache::Cache;
+        use std::fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = Utf8PathBuf::from(temp_dir.path().to_str().unwrap());
+        let ruby_dir = root.join("rubies");
+        fs::create_dir_all(&ruby_dir).unwrap();
+
+        Self {
+            ruby_dirs: indexset![ruby_dir],
+            project_root: root.clone(),
+            cache: Cache::temp().unwrap(),
+            current_exe: root.join("bin").join("rv"),
+            requested_ruby: RequestedRuby::Global,
+        }
+    }
+
     #[instrument(skip_all, level = "trace")]
     pub fn rubies(&self) -> Vec<Ruby> {
         self.discover_installed_rubies()

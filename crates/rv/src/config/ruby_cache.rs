@@ -159,31 +159,12 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::RequestedRuby;
-    use assert_fs::TempDir;
-    use camino::{Utf8Path, Utf8PathBuf};
-    use indexmap::indexset;
-    use rv_cache::Cache;
+    use camino::Utf8Path;
     use std::fs;
-
-    fn create_test_config() -> Config {
-        let temp_dir = TempDir::new().unwrap();
-        let root = Utf8PathBuf::from(temp_dir.path().to_str().unwrap());
-        let ruby_dir = root.join("rubies");
-        fs::create_dir_all(&ruby_dir).unwrap();
-
-        Config {
-            ruby_dirs: indexset![ruby_dir],
-            project_root: root.clone(),
-            cache: Cache::temp().unwrap(),
-            current_exe: root.join("bin").join("rv"),
-            requested_ruby: RequestedRuby::Global,
-        }
-    }
 
     #[test]
     fn test_discover_installed_rubies_empty() {
-        let config = create_test_config();
+        let config = Config::new_dummy();
         let rubies = config.discover_installed_rubies();
         assert!(rubies.is_empty());
     }
@@ -194,7 +175,7 @@ mod tests {
         // Let's skip it for now and focus on the cache-specific functionality
         // In a real scenario, Ruby::from_dir would work with proper Ruby installations
 
-        let config = create_test_config();
+        let config = Config::new_dummy();
 
         // Test that discover_installed_rubies doesn't crash with empty directories
         let rubies = config.discover_installed_rubies();
@@ -208,7 +189,7 @@ mod tests {
     fn test_ruby_caching() {
         // This test would need actual working Ruby installations
         // The caching logic is tested indirectly through integration tests
-        let config = create_test_config();
+        let config = Config::new_dummy();
 
         // Test that discover_installed_rubies can be called multiple times without crashing
         let rubies1 = config.discover_installed_rubies();
@@ -240,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_cache_key_generation() {
-        let config = create_test_config();
+        let config = Config::new_dummy();
         let ruby_dir = &config.ruby_dirs[0];
 
         // Create a basic directory structure with ruby executable
@@ -260,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_cache_key_missing_ruby_executable() {
-        let config = create_test_config();
+        let config = Config::new_dummy();
         let ruby_dir = &config.ruby_dirs[0];
 
         // Create directory without Ruby executable
@@ -275,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_get_cached_ruby_miss() {
-        let config = create_test_config();
+        let config = Config::new_dummy();
         let ruby_dir = &config.ruby_dirs[0];
 
         // Create a basic directory structure with ruby executable

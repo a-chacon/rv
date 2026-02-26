@@ -80,7 +80,7 @@ impl RvTest {
         // On Windows, etcetera resolves data_dir via the Win32 SHGetKnownFolderPath
         // API which returns the real %APPDATA% path, ignoring our test HOME env var.
         // RUBIES_PATH forces rv to use our temp dir instead.
-        let rubies_dir = test.temp_home().join(".local/share/rv/rubies");
+        let rubies_dir = test.rubies_dir();
         std::fs::create_dir_all(&rubies_dir).expect("Failed to create rubies directory");
         test.env.insert("RUBIES_PATH".into(), rubies_dir.into());
 
@@ -122,6 +122,10 @@ impl RvTest {
 
     pub fn temp_home(&self) -> Utf8PathBuf {
         self.temp_root().join("home")
+    }
+
+    pub fn rubies_dir(&self) -> Utf8PathBuf {
+        self.data_dir().join("rv/rubies")
     }
 
     pub fn data_dir(&self) -> Utf8PathBuf {
@@ -454,7 +458,7 @@ impl RvTest {
     }
 
     pub fn create_ruby_dir(&self, name: &str) -> Utf8PathBuf {
-        let ruby_dir = self.temp_home().join(".local/share/rv/rubies").join(name);
+        let ruby_dir = self.rubies_dir().join(name);
         std::fs::create_dir_all(&ruby_dir).expect("Failed to create ruby directory");
 
         let bin_dir = ruby_dir.join("bin");

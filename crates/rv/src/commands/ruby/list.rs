@@ -40,23 +40,6 @@ struct JsonRubyEntry {
 }
 
 impl JsonRubyEntry {
-    fn installed(ruby: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(ruby, true, active_ruby)
-    }
-
-    fn available(ruby: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(ruby, false, active_ruby)
-    }
-
-    fn new(ruby: Ruby, installed: bool, active_ruby: &Option<Ruby>) -> Self {
-        JsonRubyEntry {
-            active: active_ruby.as_ref().is_some_and(|a| a == &ruby),
-            installed,
-            ruby,
-            color: true,
-        }
-    }
-
     fn no_color(&mut self) {
         self.color = false;
     }
@@ -140,7 +123,12 @@ pub(crate) async fn list(
         rubies_map
             .entry(ruby.version.clone())
             .or_default()
-            .push(JsonRubyEntry::installed(ruby, &active_ruby));
+            .push(JsonRubyEntry {
+                active: active(&ruby, &active_ruby),
+                installed: true,
+                ruby,
+                color: true,
+            });
     }
 
     if !version_filter.installed_only {
@@ -158,7 +146,12 @@ pub(crate) async fn list(
         for ruby in selected_remote_rubies {
             rubies_map
                 .entry(ruby.version.clone())
-                .or_insert(vec![JsonRubyEntry::available(ruby, &active_ruby)]);
+                .or_insert(vec![JsonRubyEntry {
+                    active: active(&ruby, &active_ruby),
+                    installed: false,
+                    ruby,
+                    color: true,
+                }]);
         }
 
         let insert_requested_if_available = || {
@@ -190,6 +183,10 @@ pub(crate) async fn list(
     let entries: Vec<JsonRubyEntry> = rubies_map.into_values().flatten().collect();
 
     print_entries(entries, format, no_color)
+}
+
+fn active(ruby: &Ruby, active_ruby: &Option<Ruby>) -> bool {
+    active_ruby.as_ref().is_some_and(|a| a == ruby)
 }
 
 fn latest_patch_version(remote_rubies: &Vec<Ruby>) -> Vec<Ruby> {

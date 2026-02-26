@@ -250,4 +250,21 @@ fn test_shell_env_with_existing_manpath() {
     output.assert_success();
 
     output.assert_stdout_contains("export MANPATH='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:/usr/share/man:/usr/local/share/man'");
+
+    // Check it's not duplicated when rv ruby already in MANPATH
+    test.env.insert(
+        "MANPATH".into(),
+        format!(
+            "{}/ruby-3.3.5/share/man:/usr/share/man:/usr/local/share/man",
+            test.rubies_dir()
+        ),
+    );
+
+    let output = test.rv(&["shell", "env", "zsh"]);
+    output.assert_success();
+
+    assert!(
+        !output.normalized_stdout().contains("export MANPATH"),
+        "MANPATH should not require modifications if already set",
+    )
 }

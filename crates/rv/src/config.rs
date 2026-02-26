@@ -244,7 +244,11 @@ impl Config {
             #[cfg(not(windows))]
             if let Some(man_path) = ruby.man_path() {
                 let existing = env::var("MANPATH").unwrap_or_default();
-                env.insert("MANPATH", format!("{}:{}", man_path, existing));
+                let man_paths = split_paths(&existing).collect::<Vec<_>>();
+
+                if !man_paths.contains(&man_path.to_path_buf().into_std_path_buf()) {
+                    env.insert("MANPATH", format!("{}:{}", man_path, existing));
+                }
             }
         }
 

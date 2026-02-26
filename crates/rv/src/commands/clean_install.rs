@@ -371,7 +371,7 @@ async fn ci_inner_work(
 
     let gem_fetch_start = Instant::now();
     let stats = DownloadStats::default();
-    let downloaded = download_gems(lockfile.clone(), &config.cache, args, progress, &stats).await?;
+    let downloaded = download_gems(&lockfile, &config.cache, args, progress, &stats).await?;
     let downloaded_count = downloaded.len();
     let gem_fetch_elapsed = gem_fetch_start.elapsed();
 
@@ -1177,7 +1177,7 @@ impl DownloadStats {
 
 /// Downloads all Rubygem server gems from a Gemfile.lock
 async fn download_gems<'i>(
-    lockfile: GemfileDotLock<'i>,
+    lockfile: &GemfileDotLock<'i>,
     cache: &rv_cache::Cache,
     args: &CiInnerArgs,
     progress: &WorkProgress,
@@ -1192,9 +1192,9 @@ async fn download_gems<'i>(
     span.pb_set_message("0 cached, 0 downloaded");
     let _guard = span.enter();
 
-    let all_sources = futures_util::stream::iter(lockfile.gem);
+    let all_sources = futures_util::stream::iter(&lockfile.gem);
     let checksums = if args.validate_checksums
-        && let Some(checks) = lockfile.checksums
+        && let Some(checks) = &lockfile.checksums
     {
         let mut hm = HashMap::new();
         for checksum in checks {
@@ -1209,7 +1209,7 @@ async fn download_gems<'i>(
                         }
                         ChecksumAlgorithm::SHA256 => KnownChecksumAlgos::Sha256,
                     },
-                    value: checksum.value,
+                    value: checksum.value.clone(),
                 },
             );
         }
@@ -1827,7 +1827,7 @@ fn url_for_spec(remote: &str, spec: &Spec<'_>) -> Result<Url> {
 /// Downloads all gems from a particular gem source,
 /// e.g. from gems.coop or rubygems or something.
 async fn download_gem_source<'i>(
-    gem_source: GemSection<'i>,
+    gem_source: &GemSection<'i>,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     cache: &rv_cache::Cache,
     max_concurrent_requests: usize,
@@ -1839,8 +1839,7 @@ async fn download_gem_source<'i>(
     let client = rv_http_client()?;
 
     // Download them all, concurrently.
-    let gems_to_download = gem_source.specs;
-    let spec_stream = futures_util::stream::iter(gems_to_download);
+    let spec_stream = futures_util::stream::iter(&gem_source.specs);
     let downloaded_gems: Vec<_> = spec_stream
         .map(|spec| {
             let client = &client;
@@ -1873,14 +1872,14 @@ async fn download_gem_source<'i>(
 /// Download a single gem, from the given URL, using the given client.
 async fn download_gem<'i>(
     remote: &str,
-    spec: Spec<'i>,
+    spec: &Spec<'i>,
     client: &Client,
     cache: &rv_cache::Cache,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     stats: &DownloadStats,
     span: &tracing::Span,
 ) -> Result<DownloadedRubygems> {
-    let url = url_for_spec(remote, &spec)?;
+    let url = url_for_spec(remote, spec)?;
     let cache_key = rv_cache::cache_digest(url.as_ref());
     let cache_path = cache
         .shard(rv_cache::CacheBucket::Gem, "gems")

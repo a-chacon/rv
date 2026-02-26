@@ -302,7 +302,7 @@ impl Config<'_> {
     }
 }
 
-pub fn relativize(path: &Utf8PathBuf) -> String {
+pub fn relativize(path: &Utf8Path) -> String {
     let Some(current_dir) = std::env::current_dir().ok() else {
         return path.to_string();
     };
@@ -324,7 +324,7 @@ pub fn relativize(path: &Utf8PathBuf) -> String {
     relative_path
 }
 
-pub fn unexpand(path: &Utf8PathBuf) -> String {
+pub fn unexpand(path: &Utf8Path) -> String {
     let mut truncated = path
         .strip_prefix(rv_dirs::home_dir())
         .unwrap_or(path)

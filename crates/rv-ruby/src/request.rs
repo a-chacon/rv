@@ -1,4 +1,4 @@
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use rv_cache::{CacheKey, CacheKeyHasher};
 use std::{fmt::Display, str::FromStr};
 
@@ -63,7 +63,7 @@ impl std::fmt::Debug for Source {
 }
 
 impl Source {
-    pub fn path(&self) -> &Utf8PathBuf {
+    pub fn path(&self) -> &Utf8Path {
         match self {
             Self::DotToolVersions(arg0) => arg0,
             Self::DotRubyVersion(arg0) => arg0,

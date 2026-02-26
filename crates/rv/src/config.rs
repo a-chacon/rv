@@ -350,14 +350,13 @@ impl Default for Env {
 }
 
 impl Env {
-    const ENV_VARS: [&str; 7] = [
+    const ENV_VARS: [&str; 6] = [
         "RUBY_ROOT",
         "RUBY_ENGINE",
         "RUBY_VERSION",
         "RUBYOPT",
         "GEM_HOME",
         "GEM_PATH",
-        "MANPATH",
     ];
 
     pub fn insert(&mut self, var: &'static str, val: String) {

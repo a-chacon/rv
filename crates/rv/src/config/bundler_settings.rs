@@ -12,10 +12,10 @@ pub struct BundlerSettings<'a> {
 }
 
 impl BundlerSettings<'_> {
-    pub fn new(home_dir: &Utf8PathBuf, project_dir: &Utf8PathBuf) -> Self {
+    pub fn new(home_dir: Utf8PathBuf, project_dir: Utf8PathBuf) -> Self {
         Self {
-            local: Self::config_for_dir(project_dir.clone()),
-            global: Self::config_for_dir(home_dir.clone()),
+            local: Self::config_for_dir(project_dir),
+            global: Self::config_for_dir(home_dir),
         }
     }
 
@@ -23,13 +23,13 @@ impl BundlerSettings<'_> {
         let key = format!("BUNDLE_{}", host.to_uppercase().replace(".", "__"));
 
         self.local
-            .clone()
-            .and_then(|settings| Self::get_string_file_config(&settings, &key))
+            .as_ref()
+            .and_then(|settings| Self::get_string_file_config(settings, &key))
             .or_else(|| Self::get_string_env_config(&key))
             .or_else(|| {
                 self.global
-                    .clone()
-                    .and_then(|settings| Self::get_string_file_config(&settings, &key))
+                    .as_ref()
+                    .and_then(|settings| Self::get_string_file_config(settings, &key))
             })
     }
 
@@ -48,9 +48,10 @@ impl BundlerSettings<'_> {
                 continue;
             };
 
+            let is_none = path.is_none();
             let install_path = InstallPath {
-                explicit_path: path.clone(),
-                use_system_gems: path_system.unwrap_or(path.is_none()),
+                explicit_path: path,
+                use_system_gems: path_system.unwrap_or(is_none),
             };
 
             return install_path.path();
@@ -67,7 +68,7 @@ impl BundlerSettings<'_> {
     }
 
     fn local_path_config(&self) -> (Option<String>, Option<bool>, Option<bool>) {
-        Self::path_config(self.local.clone())
+        Self::path_config(&self.local)
     }
 
     fn env_path_config() -> (Option<String>, Option<bool>, Option<bool>) {
@@ -79,18 +80,18 @@ impl BundlerSettings<'_> {
     }
 
     fn global_path_config(&self) -> (Option<String>, Option<bool>, Option<bool>) {
-        Self::path_config(self.global.clone())
+        Self::path_config(&self.global)
     }
 
-    fn path_config(settings: Option<Yaml>) -> (Option<String>, Option<bool>, Option<bool>) {
+    fn path_config(settings: &Option<Yaml>) -> (Option<String>, Option<bool>, Option<bool>) {
         let Some(settings) = settings else {
             return (None, None, None);
         };
 
         (
-            Self::get_string_file_config(&settings, "BUNDLE_PATH"),
-            Self::get_bool_file_config(&settings, "BUNDLE_PATH__SYSTEM"),
-            Self::get_bool_file_config(&settings, "BUNDLE_DEPLOYMENT"),
+            Self::get_string_file_config(settings, "BUNDLE_PATH"),
+            Self::get_bool_file_config(settings, "BUNDLE_PATH__SYSTEM"),
+            Self::get_bool_file_config(settings, "BUNDLE_DEPLOYMENT"),
         )
     }
 
@@ -150,7 +151,10 @@ impl InstallPath {
             return None;
         }
 
-        let base_path = absolute(self.explicit_path.clone().unwrap_or(".bundle".to_string()));
+        let base_path = match &self.explicit_path {
+            Some(explicit_path) => absolute(explicit_path),
+            None => absolute(".bundle"),
+        };
 
         let Ok(base_path) = base_path else {
             return None;
@@ -185,7 +189,7 @@ BUNDLE_PATH: foo
 
         std::fs::write(&config_file, config_content).expect("Failed to write config");
 
-        let bundler_settings = BundlerSettings::new(&home_dir, &project_dir);
+        let bundler_settings = BundlerSettings::new(home_dir, project_dir);
 
         assert_eq!(
             cwd.join("foo"),
@@ -213,7 +217,7 @@ BUNDLE_PATH: foo
 
         std::fs::write(&config_file, config_content).expect("Failed to write config");
 
-        let bundler_settings = BundlerSettings::new(&home_dir, &project_dir);
+        let bundler_settings = BundlerSettings::new(home_dir, project_dir);
 
         assert_eq!(
             cwd.join("foo"),
@@ -252,7 +256,7 @@ BUNDLE_PATH: bar
 
         std::fs::write(&local_config_file, local_config_content).expect("Failed to write config");
 
-        let bundler_settings = BundlerSettings::new(&home_dir, &project_dir);
+        let bundler_settings = BundlerSettings::new(home_dir, project_dir);
 
         assert_eq!(
             cwd.join("bar"),
@@ -278,7 +282,7 @@ BUNDLE_PATH__SYSTEM: true
 
         std::fs::write(&local_config_file, local_config_content).expect("Failed to write config");
 
-        let bundler_settings = BundlerSettings::new(&home_dir, &project_dir);
+        let bundler_settings = BundlerSettings::new(home_dir, project_dir);
 
         assert_eq!(None, bundler_settings.path())
     }
@@ -303,7 +307,7 @@ BUNDLE_DEPLOYMENT: true
 
         std::fs::write(&local_config_file, local_config_content).expect("Failed to write config");
 
-        let bundler_settings = BundlerSettings::new(&home_dir, &project_dir);
+        let bundler_settings = BundlerSettings::new(home_dir, project_dir);
 
         assert_eq!(
             cwd.join("vendor/bundle"),

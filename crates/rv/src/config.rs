@@ -65,7 +65,7 @@ pub enum RequestedRuby {
 }
 
 impl RequestedRuby {
-    pub fn explain(&self) -> String {
+    pub fn explain(&self, installed: bool) -> String {
         match self {
             Self::Explicit(_) => "Active version explicitly requested".to_string(),
             Self::Project((_, source)) => format!(
@@ -76,7 +76,10 @@ impl RequestedRuby {
                 "Active version requested by {}",
                 crate::config::unexpand(source.path())
             ),
-            Self::Global => "Active version selected by default".to_string(),
+            Self::Global => {
+                let installed_or_available = if installed { "installed" } else { "available" };
+                format!("Latest {installed_or_available} version selected by default")
+            }
         }
     }
 }

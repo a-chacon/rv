@@ -12,11 +12,7 @@ use rv_ruby::{Ruby, version::ReleasedRubyVersion};
 use serde::Serialize;
 use tracing::{info, warn};
 
-use crate::{
-    GlobalArgs,
-    config::{Config, RequestedRuby},
-    output_format::OutputFormat,
-};
+use crate::{GlobalArgs, config::Config, output_format::OutputFormat};
 
 #[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum Error {
@@ -115,6 +111,7 @@ pub(crate) async fn list(
 
     let requested = config.ruby_request();
     let mut active_ruby = requested.find_match_in(&installed_rubies);
+    let active_installed = active_ruby.is_some();
 
     // Might have multiple installed rubies with the same version (e.g., "ruby-3.2.0" and "mruby-3.2.0").
     let mut rubies_map: BTreeMap<ReleasedRubyVersion, Vec<JsonRubyEntry>> = BTreeMap::new();
@@ -182,7 +179,9 @@ pub(crate) async fn list(
     // Create entries for output
     let entries: Vec<JsonRubyEntry> = rubies_map.into_values().flatten().collect();
 
-    print_entries(entries, format, no_color, &config.requested_ruby)
+    let explanation = config.requested_ruby.explain(active_installed);
+
+    print_entries(entries, format, no_color, &explanation)
 }
 
 fn active(ruby: &Ruby, active_ruby: &Option<Ruby>) -> bool {
@@ -229,7 +228,7 @@ fn print_entries(
     mut entries: Vec<JsonRubyEntry>,
     format: OutputFormat,
     no_color: bool,
-    requested_ruby: &RequestedRuby,
+    explanation: &String,
 ) -> Result<()> {
     match format {
         OutputFormat::Text => {
@@ -245,7 +244,7 @@ fn print_entries(
                 (size, HorizontalLine::full('─', '┼', '├', '┤')),
             ]);
             table
-                .with(Panel::footer(requested_ruby.explain()))
+                .with(Panel::footer(explanation))
                 .with(style)
                 .modify((size, 0), Span::column(0))
                 .with(BorderCorrection::span());

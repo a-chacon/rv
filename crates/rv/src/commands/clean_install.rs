@@ -951,7 +951,7 @@ fn install_single_gem(
     download: DownloadedRubygems,
     args: &CiInnerArgs,
 ) -> Result<GemSpecification> {
-    let full_name = download.full_name.to_string();
+    let full_name = download.spec.gem_version.to_string();
     let install_layout = &args.install_layout;
     let binstub_dir = install_layout.binstub_dir();
     // Actually unpack the tarball here.
@@ -1178,11 +1178,11 @@ impl DownloadStats {
 /// Downloads all Rubygem server gems from a Gemfile.lock
 async fn download_gems<'i>(
     config: &Config<'_>,
-    lockfile: &GemfileDotLock<'i>,
+    lockfile: &'i GemfileDotLock<'i>,
     args: &CiInnerArgs,
     progress: &WorkProgress,
     stats: &DownloadStats,
-) -> Result<Vec<DownloadedRubygems>> {
+) -> Result<Vec<DownloadedRubygems<'i>>> {
     debug!("Downloading gem packages");
     let span = info_span!("Downloading gem packages");
     span.pb_set_style(
@@ -1237,9 +1237,9 @@ async fn download_gems<'i>(
 }
 
 /// A gem downloaded from a RubyGems source.
-struct DownloadedRubygems {
+struct DownloadedRubygems<'i> {
     contents: Bytes,
-    full_name: String,
+    spec: &'i Spec<'i>,
 }
 
 /// A gem downloaded from a git source.
@@ -1267,7 +1267,7 @@ impl<'i> DownloadedGitRepo<'i> {
     }
 }
 
-impl DownloadedRubygems {
+impl<'i> DownloadedRubygems<'i> {
     fn unpack_tarball(self, args: &CiInnerArgs) -> Result<Option<GemSpecification>> {
         match self.unpack_tarball_inner(args) {
             Err(error) => {
@@ -1288,7 +1288,7 @@ impl DownloadedRubygems {
         // Unpack the tarball into DIR/gems/
         // It should contain a metadata zip, and a data zip
         // (and optionally, a checksum zip).
-        let full_name = self.full_name.to_string();
+        let full_name = self.spec.gem_version.to_string();
         debug!("Unpacking {full_name}");
 
         // Then unpack the tarball into it.
@@ -1820,13 +1820,13 @@ fn url_for_spec(remote: &str, spec: &Spec<'_>) -> Result<Url> {
 /// e.g. from gems.coop or rubygems or something.
 async fn download_gem_source<'i>(
     config: &Config<'_>,
-    gem_source: &GemSection<'i>,
+    gem_source: &'i GemSection<'i>,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     args: &CiInnerArgs,
     progress: &WorkProgress,
     stats: &DownloadStats,
     span: &tracing::Span,
-) -> Result<Vec<DownloadedRubygems>> {
+) -> Result<Vec<DownloadedRubygems<'i>>> {
     let client = rv_http_client()?;
 
     // Download them all, concurrently.
@@ -1864,12 +1864,12 @@ async fn download_gem_source<'i>(
 async fn download_gem<'i>(
     config: &Config<'_>,
     remote: &str,
-    spec: &Spec<'i>,
+    spec: &'i Spec<'i>,
     client: &Client,
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     stats: &DownloadStats,
     span: &tracing::Span,
-) -> Result<DownloadedRubygems> {
+) -> Result<DownloadedRubygems<'i>> {
     let mut url = url_for_spec(remote, spec)?;
     let cache_key = rv_cache::cache_digest(url.as_ref());
     let cache_path = config
@@ -1934,10 +1934,7 @@ async fn download_gem<'i>(
         debug!("Cached {}", full_name);
     }
 
-    Ok(DownloadedRubygems {
-        contents,
-        full_name,
-    })
+    Ok(DownloadedRubygems { contents, spec })
 }
 
 /// Format a duration in a human-readable way (e.g., "16s" or "1m16s").

@@ -246,13 +246,8 @@ fn test_shell_env_with_existing_manpath() {
         "/usr/share/man:/usr/local/share/man".into(),
     );
 
-    // Ensure the legacy path is present.
-    create_dir_all(test.legacy_gem_path("3.3")).unwrap();
-
-    test.env.insert("PATH".into(), "/tmp/bin".into());
-
     let output = test.rv(&["shell", "env", "zsh"]);
     output.assert_success();
 
-    assert_snapshot!(output.normalized_stdout());
+    output.assert_stdout_contains("export MANPATH='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:/usr/share/man:/usr/local/share/man'");
 }

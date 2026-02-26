@@ -915,8 +915,8 @@ pub fn create_rayon_pool(
         .build()
 }
 
-fn install_gems<'i>(
-    downloaded: Vec<DownloadedRubygems<'i>>,
+fn install_gems(
+    downloaded: Vec<DownloadedRubygems>,
     args: &CiInnerArgs,
     progress: &WorkProgress,
 ) -> Result<Vec<GemSpecification>> {
@@ -947,25 +947,25 @@ fn install_gems<'i>(
     Ok(specs)
 }
 
-fn install_single_gem<'i>(
-    download: DownloadedRubygems<'i>,
+fn install_single_gem(
+    download: DownloadedRubygems,
     args: &CiInnerArgs,
 ) -> Result<GemSpecification> {
-    let gv = download.spec.gem_version;
+    let full_name = download.full_name.to_string();
     let install_layout = &args.install_layout;
     let binstub_dir = install_layout.binstub_dir();
     // Actually unpack the tarball here.
     let dep_gemspec_res = download.unpack_tarball(args)?;
-    debug!("Unpacked tarball {gv}");
-    let dep_gemspec = dep_gemspec_res.ok_or(UnpackError::MissingGemspec(gv.to_string()))?;
-    debug!("Installing binstubs for {gv}");
+    debug!("Unpacked tarball {full_name}");
+    let dep_gemspec = dep_gemspec_res.ok_or(UnpackError::MissingGemspec(full_name.to_string()))?;
+    debug!("Installing binstubs for {full_name}");
     install_binstub(
         &dep_gemspec.name,
         &dep_gemspec.executables,
         &binstub_dir,
         &args.ruby_executable_path,
     )?;
-    debug!("Installed {gv}");
+    debug!("Installed {full_name}");
     Ok(dep_gemspec)
 }
 
@@ -1182,7 +1182,7 @@ async fn download_gems<'i>(
     args: &CiInnerArgs,
     progress: &WorkProgress,
     stats: &DownloadStats,
-) -> Result<Vec<DownloadedRubygems<'i>>> {
+) -> Result<Vec<DownloadedRubygems>> {
     debug!("Downloading gem packages");
     let span = info_span!("Downloading gem packages");
     span.pb_set_style(
@@ -1245,9 +1245,9 @@ async fn download_gems<'i>(
 }
 
 /// A gem downloaded from a RubyGems source.
-struct DownloadedRubygems<'i> {
+struct DownloadedRubygems {
     contents: Bytes,
-    spec: Spec<'i>,
+    full_name: String,
 }
 
 /// A gem downloaded from a git source.
@@ -1275,7 +1275,7 @@ impl<'i> DownloadedGitRepo<'i> {
     }
 }
 
-impl<'i> DownloadedRubygems<'i> {
+impl DownloadedRubygems {
     fn unpack_tarball(self, args: &CiInnerArgs) -> Result<Option<GemSpecification>> {
         match self.unpack_tarball_inner(args) {
             Err(error) => {
@@ -1296,8 +1296,7 @@ impl<'i> DownloadedRubygems<'i> {
         // Unpack the tarball into DIR/gems/
         // It should contain a metadata zip, and a data zip
         // (and optionally, a checksum zip).
-        let GemVersion { name, version } = self.spec.gem_version;
-        let full_name = format!("{name}-{version}");
+        let full_name = self.full_name.to_string();
         debug!("Unpacking {full_name}");
 
         // Then unpack the tarball into it.
@@ -1319,9 +1318,8 @@ impl<'i> DownloadedRubygems<'i> {
                     let mut contents = GzDecoder::new(entry);
                     let mut str_contents = String::new();
                     let _ = contents.read_to_string(&mut str_contents)?;
-                    let cs = ArchiveChecksums::new(&str_contents).ok_or(
-                        UnpackError::InvalidChecksum(self.spec.gem_version.to_string()),
-                    )?;
+                    let cs = ArchiveChecksums::new(&str_contents)
+                        .ok_or(UnpackError::InvalidChecksum(full_name.to_string()))?;
 
                     // Should not happen in practice, because we break after finding the checksums.
                     // But may as well be defensive here.
@@ -1836,7 +1834,7 @@ async fn download_gem_source<'i>(
     progress: &WorkProgress,
     stats: &DownloadStats,
     span: &tracing::Span,
-) -> Result<Vec<DownloadedRubygems<'i>>> {
+) -> Result<Vec<DownloadedRubygems>> {
     // TODO: If the gem server needs user credentials, accept them and add them to this client.
     let client = rv_http_client()?;
 
@@ -1881,7 +1879,7 @@ async fn download_gem<'i>(
     checksums: &HashMap<GemVersion<'i>, HowToChecksum>,
     stats: &DownloadStats,
     span: &tracing::Span,
-) -> Result<DownloadedRubygems<'i>> {
+) -> Result<DownloadedRubygems> {
     let url = url_for_spec(remote, &spec)?;
     let cache_key = rv_cache::cache_digest(url.as_ref());
     let cache_path = cache
@@ -1910,32 +1908,38 @@ async fn download_gem<'i>(
     let (cached, downloaded) = stats.counts();
     span.pb_set_message(&format!("{cached} cached, {downloaded} downloaded"));
 
+    let gem_version = spec.gem_version;
+    let full_name = gem_version.to_string();
+
     // Validate the checksums.
-    if let Some(checksum) = checksums.get(&spec.gem_version) {
+    if let Some(checksum) = checksums.get(&gem_version) {
         match checksum.algorithm {
             KnownChecksumAlgos::Sha256 => {
                 let actual = sha2::Sha256::digest(&contents);
                 if actual[..] != checksum.value {
                     return Err(Error::LockfileChecksumFail {
                         filename: url.to_string(),
-                        gem_name: spec.gem_version.to_string(),
+                        gem_name: full_name,
                         algo: "sha256",
                     });
                 }
             }
         }
     }
-    debug!("Validated {}", spec.gem_version);
+    debug!("Validated {}", full_name);
 
     if !cache_path.exists() {
         if let Some(parent) = cache_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
         tokio::fs::write(&cache_path, &contents).await?;
-        debug!("Cached {}", spec.gem_version);
+        debug!("Cached {}", full_name);
     }
 
-    Ok(DownloadedRubygems { contents, spec })
+    Ok(DownloadedRubygems {
+        contents,
+        full_name,
+    })
 }
 
 /// Format a duration in a human-readable way (e.g., "16s" or "1m16s").

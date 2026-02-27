@@ -69,11 +69,11 @@ impl RequestedRuby {
         match self {
             Self::Explicit(_) => "* Active version explicitly requested".to_string(),
             Self::Project((_, source)) => format!(
-                "* Active version requested by {}",
+                "* Active version pinned by {}",
                 crate::config::relativize(source.path())
             ),
             Self::User((_, source)) => format!(
-                "* Active version requested by {}",
+                "* Active version pinned by {}",
                 crate::config::unexpand(source.path())
             ),
             Self::Global => {

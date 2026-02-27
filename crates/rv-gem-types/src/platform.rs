@@ -64,7 +64,8 @@ impl Platform {
             // after vendor stripping above). RubyGems uses `x64-mingw-ucrt` for modern
             // Windows Ruby (RubyInstaller 3.1.0+, which switched from mingw32 to UCRT).
             // See: https://rubyinstaller.org/2021/12/31/rubyinstaller-3.1.0-1-released.html
-            .replace("x86_64-windows-msvc", "x64-mingw-ucrt");
+            .replace("x86_64-windows-msvc", "x64-mingw-ucrt")
+            .replace("aarch64-windows-msvc", "aarch64-mingw-ucrt");
 
         Self::new(rubygems_platform).expect("Could not parse current platform")
     }

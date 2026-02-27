@@ -438,6 +438,17 @@ mod tests {
     }
 
     #[test]
+    fn test_ruby_url_windows_arm64() {
+        let host = HostPlatform::from_target_triple("aarch64-pc-windows-msvc").unwrap();
+        let url = ruby_url(&v("3.4.1"), &host);
+
+        assert_eq!(
+            url,
+            "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-3.4.1-1/rubyinstaller-3.4.1-1-arm.7z"
+        );
+    }
+
+    #[test]
     fn test_ruby_url_unix_dev() {
         let host = HostPlatform::from_target_triple("aarch64-apple-darwin").unwrap();
         let url = ruby_url(&v("dev"), &host);

@@ -273,7 +273,7 @@ fn stale_cache_fallback(cache: &rv_cache::Cache, cache_file: &str, url: &str) ->
 ///
 /// RubyInstaller2 has one GitHub release per Ruby version, each with assets like
 /// `rubyinstaller-3.4.8-1-x64.7z`. This function:
-/// 1. Filters to `x64` assets only (32-bit and ARM not yet supported)
+/// 1. Filters to `x64` and `arm` assets (32-bit not supported)
 /// 2. Normalizes names: `rubyinstaller-3.4.8-1-x64.7z` → `ruby-3.4.8.x64.7z`
 /// 3. Deduplicates by (version, arch), keeping the highest revision number
 /// 4. Returns a single Release with all normalized assets
@@ -300,8 +300,8 @@ fn combine_rubyinstaller2_releases(releases: Vec<Release>) -> Release {
                 let revision: u32 = caps[2].parse().unwrap_or(0);
                 let arch = &caps[3];
 
-                // Only x64 is supported (WindowsX86_64). Skip x86 and arm.
-                if arch != "x64" {
+                // Skip x86 (32-bit). We support x64 and arm.
+                if arch == "x86" {
                     continue;
                 }
 
@@ -423,6 +423,7 @@ mod tests {
             ("ruby-3.3.0.x86_64_linux.tar.gz", "linux", "x86_64"),
             ("ruby-3.3.0.arm64_linux.tar.gz", "linux", "aarch64"),
             ("ruby-3.3.0.x64.7z", "windows", "x86_64"),
+            ("ruby-3.4.8.arm.7z", "windows", "aarch64"),
         ];
         for (filename, expected_os, expected_arch) in cases {
             let asset = Asset {
@@ -468,21 +469,19 @@ mod tests {
             "RubyInstaller-3.4.4-1",
             &[
                 "rubyinstaller-3.4.4-1-x64.7z",
-                "rubyinstaller-3.4.4-1-x64.exe", // exe → skipped by regex
-                "rubyinstaller-3.4.4-1-x64.7z.asc", // .asc → skipped by regex
-                "rubyinstaller-3.4.4-1-x86.7z",  // x86 → skipped
+                "rubyinstaller-3.4.4-1-arm.7z",         // arm → kept
+                "rubyinstaller-3.4.4-1-x64.exe",        // exe → skipped by regex
+                "rubyinstaller-3.4.4-1-x64.7z.asc",     // .asc → skipped by regex
+                "rubyinstaller-3.4.4-1-x86.7z",         // x86 → skipped
                 "rubyinstaller-devkit-3.4.4-1-x64.exe", // devkit → skipped
             ],
         )];
 
         let result = combine_rubyinstaller2_releases(releases);
-        assert_eq!(result.assets.len(), 1);
-        assert_eq!(result.assets[0].name, "ruby-3.4.4.x64.7z");
-        assert!(
-            result.assets[0]
-                .browser_download_url
-                .contains("rubyinstaller-3.4.4-1-x64.7z")
-        );
+        assert_eq!(result.assets.len(), 2);
+        let names: Vec<&str> = result.assets.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"ruby-3.4.4.x64.7z"));
+        assert!(names.contains(&"ruby-3.4.4.arm.7z"));
     }
 
     #[test]
@@ -505,13 +504,19 @@ mod tests {
     #[test]
     fn test_combine_rubyinstaller2_releases_multiple_versions() {
         let releases = vec![
-            make_release("RubyInstaller-3.4.4-1", &["rubyinstaller-3.4.4-1-x64.7z"]),
+            make_release(
+                "RubyInstaller-3.4.4-1",
+                &[
+                    "rubyinstaller-3.4.4-1-x64.7z",
+                    "rubyinstaller-3.4.4-1-arm.7z",
+                ],
+            ),
             make_release("RubyInstaller-3.3.7-1", &["rubyinstaller-3.3.7-1-x64.7z"]),
             make_release("RubyInstaller-3.2.8-1", &["rubyinstaller-3.2.8-1-x64.7z"]),
         ];
 
         let result = combine_rubyinstaller2_releases(releases);
-        assert_eq!(result.assets.len(), 3);
+        assert_eq!(result.assets.len(), 4);
         // Assets are sorted by name
         let names: Vec<&str> = result.assets.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(
@@ -519,7 +524,8 @@ mod tests {
             [
                 "ruby-3.2.8.x64.7z",
                 "ruby-3.3.7.x64.7z",
-                "ruby-3.4.4.x64.7z"
+                "ruby-3.4.4.arm.7z",
+                "ruby-3.4.4.x64.7z",
             ]
         );
     }
@@ -544,19 +550,39 @@ mod tests {
         // End-to-end: RubyInstaller2 asset → normalized → ARCH_REGEX → ruby_from_asset
         let releases = vec![make_release(
             "RubyInstaller-3.4.8-1",
-            &["rubyinstaller-3.4.8-1-x64.7z"],
+            &[
+                "rubyinstaller-3.4.8-1-x64.7z",
+                "rubyinstaller-3.4.8-1-arm.7z",
+            ],
         )];
 
         let combined = combine_rubyinstaller2_releases(releases);
-        assert_eq!(combined.assets.len(), 1);
+        assert_eq!(combined.assets.len(), 2);
 
-        // The normalized asset name should be parseable by our pipeline
-        let ruby = ruby_from_asset(&combined.assets[0]).unwrap();
+        // Both normalized asset names should be parseable by our pipeline
+        let x64_asset = combined
+            .assets
+            .iter()
+            .find(|a| a.name == "ruby-3.4.8.x64.7z")
+            .unwrap();
+        let ruby = ruby_from_asset(x64_asset).unwrap();
         assert_eq!(ruby.version.major, 3);
         assert_eq!(ruby.version.minor, 4);
         assert_eq!(ruby.version.patch, 8);
         assert_eq!(ruby.os, "windows");
         assert_eq!(ruby.arch, "x86_64");
+
+        let arm_asset = combined
+            .assets
+            .iter()
+            .find(|a| a.name == "ruby-3.4.8.arm.7z")
+            .unwrap();
+        let ruby = ruby_from_asset(arm_asset).unwrap();
+        assert_eq!(ruby.version.major, 3);
+        assert_eq!(ruby.version.minor, 4);
+        assert_eq!(ruby.version.patch, 8);
+        assert_eq!(ruby.os, "windows");
+        assert_eq!(ruby.arch, "aarch64");
     }
 
     #[test]

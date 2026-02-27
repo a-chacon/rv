@@ -355,6 +355,7 @@ mod tests {
 1.19.0-arm-linux-musl racc:~> 1.4|checksum:23ed90922f1a38aed555d3de4d058e90850c731c5b756d191b3dc8055948e73c,ruby:< 4.1.dev&>= 3.2,rubygems:>= 3.3.22
 1.19.0-arm64-darwin racc:~> 1.4|checksum:0811dfd936d5f6dd3f6d32ef790568bf29b2b7bead9ba68866847b33c9cf5810,ruby:< 4.1.dev&>= 3.2
 1.19.0-java racc:~> 1.4|checksum:5f3a70e252be641d8a4099f7fb4cc25c81c632cb594eec9b4b8f2ca8be4374f3,ruby:>= 3.2
+1.19.0-aarch64-mingw-ucrt racc:~> 1.4|checksum:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,ruby:< 4.1.dev&>= 3.2
 1.19.0-x64-mingw-ucrt racc:~> 1.4|checksum:05d7ed2d95731edc9bef2811522dc396df3e476ef0d9c76793a9fca81cab056b,ruby:< 4.1.dev&>= 3.2
 1.19.0-x86_64-darwin racc:~> 1.4|checksum:1dad56220b603a8edb9750cd95798bffa2b8dd9dd9aa47f664009ee5b43e3067,ruby:< 4.1.dev&>= 3.2
 1.19.0-x86_64-linux-gnu racc:~> 1.4|checksum:f482b95c713d60031d48c44ce14562f8d2ce31e3a9e8dd0ccb131e9e5a68b58c,ruby:< 4.1.dev&>= 3.2,rubygems:>= 3.3.22
@@ -374,6 +375,8 @@ mod tests {
         let expected_release = "1.19.0-x86_64-linux-gnu";
         #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
         let expected_release = "1.19.0-x64-mingw-ucrt";
+        #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+        let expected_release = "1.19.0-aarch64-mingw-ucrt";
 
         assert_eq!(
             actual_parsed_response

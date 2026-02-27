@@ -328,14 +328,7 @@ pub fn relativize(path: &Utf8Path) -> String {
 }
 
 pub fn unexpand(path: &Utf8Path) -> String {
-    let mut truncated = path
-        .strip_prefix(rv_dirs::home_dir())
-        .unwrap_or(path)
-        .to_string();
-
-    truncated.insert_str(0, "~/");
-
-    truncated
+    path.as_str().replace(rv_dirs::home_dir().as_str(), "~")
 }
 
 fn xdg_data_path() -> Utf8PathBuf {

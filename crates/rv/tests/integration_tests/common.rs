@@ -530,6 +530,31 @@ impl RvTest {
         )
     }
 
+    /// Create a mock tool executable (e.g., `irb`, `gem`) in a Ruby directory's bin/.
+    /// On Unix, creates a shell script. On Windows, creates a .cmd batch file.
+    pub fn create_tool_in_ruby_dir(&self, ruby_dir: &Utf8Path, tool_name: &str) {
+        let bin_dir = ruby_dir.join("bin");
+
+        #[cfg(unix)]
+        {
+            let tool_path = bin_dir.join(tool_name);
+            let script = format!("#!/bin/bash\necho \"{tool_name} running\"\n");
+            std::fs::write(&tool_path, script).expect("Failed to create tool executable");
+
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&tool_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&tool_path, perms).unwrap();
+        }
+
+        #[cfg(windows)]
+        {
+            let tool_path = bin_dir.join(format!("{tool_name}.cmd"));
+            let script = format!("@echo off\r\necho {tool_name} running\r\n");
+            std::fs::write(&tool_path, script).expect("Failed to create tool executable");
+        }
+    }
+
     pub fn use_gemfile(&self, path: &str) {
         let gemfile = fs_err::read_to_string(path).unwrap();
         let _ = fs_err::write(self.current_dir().join("Gemfile"), &gemfile);

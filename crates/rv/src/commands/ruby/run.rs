@@ -117,10 +117,18 @@ pub(crate) fn run_no_install<A: AsRef<std::ffi::OsStr>>(
         Program::Tool {
             executable_path,
             extra_paths,
-        } => (
-            config.env_with_path_for(Some(&ruby), extra_paths)?.split(),
-            executable_path,
-        ),
+        } => {
+            let (unset, set) = config.env_with_path_for(Some(&ruby), extra_paths)?.split();
+
+            // On Windows, Rust's Command doesn't consult PATHEXT to resolve
+            // .cmd/.bat files (rust-lang/rust#94743). Ruby tools like irb, gem,
+            // and rake are .cmd batch files on Windows, so we resolve the full
+            // path ourselves — following the pattern used by uv's WindowsRunnable.
+            #[cfg(windows)]
+            let executable_path = resolve_tool_on_windows(&executable_path, &set);
+
+            ((unset, set), executable_path)
+        }
     };
     let mut cmd = Command::new(executable_path);
     cmd.args(args);
@@ -150,6 +158,49 @@ pub(crate) fn run_no_install<A: AsRef<std::ffi::OsStr>>(
         }
         CaptureOutput::Both => Ok(cmd.output()?),
     }
+}
+
+/// On Windows, resolve a tool name to its full path by searching PATH directories
+/// for files with standard executable extensions (.exe, .cmd, .bat).
+///
+/// Rust's `Command` doesn't consult PATHEXT (rust-lang/rust#94743), so
+/// `Command::new("irb")` can't find `irb.cmd`. We search the PATH we've built
+/// (which includes Ruby's bin/ directory) to find the actual file. Once resolved,
+/// `Command::new("path/to/irb.cmd")` works because Rust 1.77.2+ handles .cmd
+/// dispatch via CreateProcessW — the same mechanism rv already uses for ruby.cmd.
+#[cfg(windows)]
+fn resolve_tool_on_windows(
+    executable: &Utf8Path,
+    env_vars: &[(&str, String)],
+) -> Utf8PathBuf {
+    // If the path already has an extension, return as-is.
+    if executable.extension().is_some() {
+        return executable.to_owned();
+    }
+
+    // Get PATH from the environment we're about to set on the command.
+    let path_value = env_vars
+        .iter()
+        .find(|(k, _)| *k == "PATH")
+        .map(|(_, v)| v.as_str())
+        .unwrap_or("");
+
+    // Search PATH directories for the executable with standard Windows extensions.
+    let extensions = ["exe", "cmd", "bat"];
+    for dir in std::env::split_paths(path_value) {
+        for ext in &extensions {
+            let candidate = dir.join(format!("{}.{}", executable, ext));
+            if candidate.exists() {
+                if let Ok(utf8) = Utf8PathBuf::try_from(candidate) {
+                    debug!("Resolved tool {executable} to {utf8}");
+                    return utf8;
+                }
+            }
+        }
+    }
+
+    debug!("Could not resolve tool {executable}, using as-is");
+    executable.to_owned()
 }
 
 /// Spawns a command exec style.

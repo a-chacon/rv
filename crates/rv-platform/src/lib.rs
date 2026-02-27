@@ -26,6 +26,7 @@ pub enum HostPlatform {
     LinuxAarch64,
     LinuxMuslAarch64,
     WindowsX86_64,
+    WindowsAarch64,
 }
 
 impl HostPlatform {
@@ -51,6 +52,7 @@ impl HostPlatform {
             "aarch64-unknown-linux-gnu" => Ok(Self::LinuxAarch64),
             "aarch64-unknown-linux-musl" => Ok(Self::LinuxMuslAarch64),
             "x86_64-pc-windows-msvc" => Ok(Self::WindowsX86_64),
+            "aarch64-pc-windows-msvc" => Ok(Self::WindowsAarch64),
             other => Err(UnsupportedPlatformError {
                 platform: other.to_string(),
             }),
@@ -63,14 +65,17 @@ impl HostPlatform {
             Self::MacosAarch64 | Self::MacosX86_64 => "macos",
             Self::LinuxX86_64 | Self::LinuxAarch64 => "linux",
             Self::LinuxMuslX86_64 | Self::LinuxMuslAarch64 => "linux-musl",
-            Self::WindowsX86_64 => "windows",
+            Self::WindowsX86_64 | Self::WindowsAarch64 => "windows",
         }
     }
 
     /// The normalized architecture name used for filtering ruby releases.
     pub fn arch(&self) -> &'static str {
         match self {
-            Self::MacosAarch64 | Self::LinuxAarch64 | Self::LinuxMuslAarch64 => "aarch64",
+            Self::MacosAarch64
+            | Self::LinuxAarch64
+            | Self::LinuxMuslAarch64
+            | Self::WindowsAarch64 => "aarch64",
             Self::MacosX86_64 | Self::LinuxX86_64 | Self::LinuxMuslX86_64 | Self::WindowsX86_64 => {
                 "x86_64"
             }
@@ -89,6 +94,7 @@ impl HostPlatform {
             Self::LinuxAarch64 => "arm64_linux",
             Self::LinuxMuslAarch64 => "arm64_linux_musl",
             Self::WindowsX86_64 => "x64",
+            Self::WindowsAarch64 => "arm",
         }
     }
 
@@ -101,13 +107,13 @@ impl HostPlatform {
             | Self::LinuxMuslX86_64
             | Self::LinuxAarch64
             | Self::LinuxMuslAarch64 => "tar.gz",
-            Self::WindowsX86_64 => "7z",
+            Self::WindowsX86_64 | Self::WindowsAarch64 => "7z",
         }
     }
 
     /// Whether this is a Windows platform.
     pub fn is_windows(&self) -> bool {
-        matches!(self, Self::WindowsX86_64)
+        matches!(self, Self::WindowsX86_64 | Self::WindowsAarch64)
     }
 
     /// Parse from a ruby release asset arch string (e.g., `"arm64_sonoma"`, `"x64"`).
@@ -120,6 +126,7 @@ impl HostPlatform {
             "arm64_linux" => Ok(Self::LinuxAarch64),
             "arm64_linux_musl" => Ok(Self::LinuxMuslAarch64),
             "x64" => Ok(Self::WindowsX86_64),
+            "arm" => Ok(Self::WindowsAarch64),
             other => Err(UnsupportedPlatformError {
                 platform: other.to_string(),
             }),
@@ -140,6 +147,7 @@ impl HostPlatform {
             Self::LinuxAarch64,
             Self::LinuxMuslAarch64,
             Self::WindowsX86_64,
+            Self::WindowsAarch64,
         ]
     }
 
@@ -153,6 +161,7 @@ impl HostPlatform {
             Self::LinuxAarch64 => "aarch64-unknown-linux-gnu",
             Self::LinuxMuslAarch64 => "aarch64-unknown-linux-musl",
             Self::WindowsX86_64 => "x86_64-pc-windows-msvc",
+            Self::WindowsAarch64 => "aarch64-pc-windows-msvc",
         }
     }
 
@@ -166,6 +175,7 @@ impl HostPlatform {
             Self::LinuxAarch64 => ".arm64_linux.tar.gz",
             Self::LinuxMuslAarch64 => ".arm64_linux_musl.tar.gz",
             Self::WindowsX86_64 => ".x64.7z",
+            Self::WindowsAarch64 => ".arm.7z",
         }
     }
 }
@@ -182,6 +192,7 @@ mod tests {
             ("x86_64-unknown-linux-gnu", HostPlatform::LinuxX86_64),
             ("aarch64-unknown-linux-gnu", HostPlatform::LinuxAarch64),
             ("x86_64-pc-windows-msvc", HostPlatform::WindowsX86_64),
+            ("aarch64-pc-windows-msvc", HostPlatform::WindowsAarch64),
         ];
         for (triple, expected) in cases {
             assert_eq!(
@@ -223,6 +234,7 @@ mod tests {
         assert_eq!(HostPlatform::LinuxX86_64.os(), "linux");
         assert_eq!(HostPlatform::LinuxAarch64.os(), "linux");
         assert_eq!(HostPlatform::WindowsX86_64.os(), "windows");
+        assert_eq!(HostPlatform::WindowsAarch64.os(), "windows");
     }
 
     #[test]
@@ -232,6 +244,7 @@ mod tests {
         assert_eq!(HostPlatform::LinuxX86_64.arch(), "x86_64");
         assert_eq!(HostPlatform::LinuxAarch64.arch(), "aarch64");
         assert_eq!(HostPlatform::WindowsX86_64.arch(), "x86_64");
+        assert_eq!(HostPlatform::WindowsAarch64.arch(), "aarch64");
     }
 
     #[test]
@@ -241,6 +254,7 @@ mod tests {
         assert_eq!(HostPlatform::LinuxX86_64.ruby_arch_str(), "x86_64_linux");
         assert_eq!(HostPlatform::LinuxAarch64.ruby_arch_str(), "arm64_linux");
         assert_eq!(HostPlatform::WindowsX86_64.ruby_arch_str(), "x64");
+        assert_eq!(HostPlatform::WindowsAarch64.ruby_arch_str(), "arm");
     }
 
     #[test]
@@ -250,6 +264,7 @@ mod tests {
         assert_eq!(HostPlatform::LinuxX86_64.archive_ext(), "tar.gz");
         assert_eq!(HostPlatform::LinuxAarch64.archive_ext(), "tar.gz");
         assert_eq!(HostPlatform::WindowsX86_64.archive_ext(), "7z");
+        assert_eq!(HostPlatform::WindowsAarch64.archive_ext(), "7z");
     }
 
     #[test]
@@ -257,6 +272,7 @@ mod tests {
         assert!(!HostPlatform::MacosAarch64.is_windows());
         assert!(!HostPlatform::LinuxX86_64.is_windows());
         assert!(HostPlatform::WindowsX86_64.is_windows());
+        assert!(HostPlatform::WindowsAarch64.is_windows());
     }
 
     #[test]
@@ -268,6 +284,7 @@ mod tests {
             ("x86_64_linux", HostPlatform::LinuxX86_64),
             ("arm64_linux", HostPlatform::LinuxAarch64),
             ("x64", HostPlatform::WindowsX86_64),
+            ("arm", HostPlatform::WindowsAarch64),
         ];
         for (arch_str, expected) in cases {
             assert_eq!(

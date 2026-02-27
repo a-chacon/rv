@@ -169,10 +169,7 @@ pub(crate) fn run_no_install<A: AsRef<std::ffi::OsStr>>(
 /// `Command::new("path/to/irb.cmd")` works because Rust 1.77.2+ handles .cmd
 /// dispatch via CreateProcessW — the same mechanism rv already uses for ruby.cmd.
 #[cfg(windows)]
-fn resolve_tool_on_windows(
-    executable: &Utf8Path,
-    env_vars: &[(&str, String)],
-) -> Utf8PathBuf {
+fn resolve_tool_on_windows(executable: &Utf8Path, env_vars: &[(&str, String)]) -> Utf8PathBuf {
     // If the path already has an extension, return as-is.
     if executable.extension().is_some() {
         return executable.to_owned();
@@ -190,11 +187,11 @@ fn resolve_tool_on_windows(
     for dir in std::env::split_paths(path_value) {
         for ext in &extensions {
             let candidate = dir.join(format!("{}.{}", executable, ext));
-            if candidate.exists() {
-                if let Ok(utf8) = Utf8PathBuf::try_from(candidate) {
-                    debug!("Resolved tool {executable} to {utf8}");
-                    return utf8;
-                }
+            if candidate.exists()
+                && let Ok(utf8) = Utf8PathBuf::try_from(candidate)
+            {
+                debug!("Resolved tool {executable} to {utf8}");
+                return utf8;
             }
         }
     }

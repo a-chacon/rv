@@ -595,6 +595,7 @@ impl RvTest {
     }
 }
 
+#[cfg(unix)]
 pub fn is_shell_installed(shell_name: &str) -> bool {
     Command::new(shell_name).arg("--version").output().is_ok()
 }

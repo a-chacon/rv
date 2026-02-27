@@ -1,7 +1,10 @@
 use clap::Args;
 use std::io;
 use std::{borrow::Cow, collections::BTreeMap};
-use tabled::{Table, settings::Style};
+use tabled::{
+    Table,
+    settings::{Panel, Span, Style, style::HorizontalLine, themes::BorderCorrection},
+};
 
 use anstream::println;
 use owo_colors::OwoColorize;
@@ -32,7 +35,7 @@ type Result<T> = miette::Result<T, Error>;
 #[cfg_attr(test, derive(PartialEq))]
 struct JsonRubyEntry {
     #[serde(flatten)]
-    details: Ruby,
+    ruby: Ruby,
     installed: bool,
     active: bool,
     #[serde(skip)]
@@ -40,63 +43,39 @@ struct JsonRubyEntry {
 }
 
 impl JsonRubyEntry {
-    fn installed(details: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(details, true, active_ruby)
-    }
-
-    fn available(details: Ruby, active_ruby: &Option<Ruby>) -> Self {
-        Self::new(details, false, active_ruby)
-    }
-
-    fn new(details: Ruby, installed: bool, active_ruby: &Option<Ruby>) -> Self {
-        JsonRubyEntry {
-            active: active_ruby.as_ref().is_some_and(|a| a == &details),
-            installed,
-            details,
-            color: true,
-        }
-    }
-
     fn no_color(&mut self) {
         self.color = false;
     }
 }
 
 impl tabled::Tabled for JsonRubyEntry {
-    const LENGTH: usize = 3;
+    const LENGTH: usize = 2;
 
     fn fields(&self) -> Vec<Cow<'_, str>> {
         let name = if self.active {
-            format!("* {}", self.details.version)
+            format!("* {}", self.ruby.version)
         } else {
-            format!("  {}", self.details.version)
+            format!("  {}", self.ruby.version)
         };
 
         let installed = if self.installed {
+            let short_executable_path = crate::config::unexpand(&self.ruby.executable_path());
+
             if self.color {
-                "[installed]".green().to_string().into()
+                short_executable_path.cyan().to_string().into()
             } else {
-                "[installed]".to_string().into()
+                short_executable_path.into()
             }
         } else if self.color {
             "[available]".dimmed().to_string().into()
         } else {
             "[available]".to_string().into()
         };
-        let path = if self.installed {
-            if self.color {
-                self.details.executable_path().cyan().to_string().into()
-            } else {
-                self.details.executable_path().to_string().into()
-            }
-        } else {
-            "".into()
-        };
-        vec![name.into(), installed, path]
+        vec![name.into(), installed]
     }
 
     fn headers() -> Vec<Cow<'static, str>> {
-        vec!["Version".into(), "Installed".into(), "Path".into()]
+        vec!["Version".into(), "Installed".into()]
     }
 }
 
@@ -132,6 +111,7 @@ pub(crate) async fn list(
 
     let requested = config.ruby_request();
     let mut active_ruby = requested.find_match_in(&installed_rubies);
+    let active_installed = active_ruby.is_some();
 
     // Might have multiple installed rubies with the same version (e.g., "ruby-3.2.0" and "mruby-3.2.0").
     let mut rubies_map: BTreeMap<ReleasedRubyVersion, Vec<JsonRubyEntry>> = BTreeMap::new();
@@ -140,7 +120,12 @@ pub(crate) async fn list(
         rubies_map
             .entry(ruby.version.clone())
             .or_default()
-            .push(JsonRubyEntry::installed(ruby, &active_ruby));
+            .push(JsonRubyEntry {
+                active: active(&ruby, &active_ruby),
+                installed: true,
+                ruby,
+                color: true,
+            });
     }
 
     if !version_filter.installed_only {
@@ -158,19 +143,22 @@ pub(crate) async fn list(
         for ruby in selected_remote_rubies {
             rubies_map
                 .entry(ruby.version.clone())
-                .or_insert(vec![JsonRubyEntry::available(ruby, &active_ruby)]);
+                .or_insert(vec![JsonRubyEntry {
+                    active: active(&ruby, &active_ruby),
+                    installed: false,
+                    ruby,
+                    color: true,
+                }]);
         }
 
         let insert_requested_if_available = || {
             let ruby = requested.find_match_in(&remote_rubies);
 
-            if ruby.is_some() {
-                let details = ruby.clone().unwrap();
-
+            if let Some(ref ruby) = ruby {
                 rubies_map
-                    .entry(details.version.clone())
+                    .entry(ruby.version.clone())
                     .or_insert(vec![JsonRubyEntry {
-                        details,
+                        ruby: ruby.clone(),
                         installed: false,
                         active: true,
                         color: true,
@@ -191,7 +179,13 @@ pub(crate) async fn list(
     // Create entries for output
     let entries: Vec<JsonRubyEntry> = rubies_map.into_values().flatten().collect();
 
-    print_entries(entries, format, no_color)
+    let explanation = config.requested_ruby.explain(active_installed);
+
+    print_entries(entries, format, no_color, &explanation)
+}
+
+fn active(ruby: &Ruby, active_ruby: &Option<Ruby>) -> bool {
+    active_ruby.as_ref().is_some_and(|a| a == ruby)
 }
 
 fn latest_patch_version(remote_rubies: &Vec<Ruby>) -> Vec<Ruby> {
@@ -234,6 +228,7 @@ fn print_entries(
     mut entries: Vec<JsonRubyEntry>,
     format: OutputFormat,
     no_color: bool,
+    explanation: &String,
 ) -> Result<()> {
     match format {
         OutputFormat::Text => {
@@ -242,8 +237,18 @@ fn print_entries(
                     e.no_color();
                 }
             }
+            let size = entries.len() + 1;
             let mut table = Table::new(entries);
-            table.with(Style::sharp());
+            let style = Style::sharp().horizontals([
+                (1, HorizontalLine::full('─', '┼', '├', '┤')),
+                (size, HorizontalLine::full('─', '┼', '├', '┤')),
+            ]);
+            table
+                .with(Panel::footer(explanation))
+                .with(style)
+                .modify((size, 0), Span::column(0))
+                .with(BorderCorrection::span());
+
             println!("{table}");
         }
         OutputFormat::Json => {

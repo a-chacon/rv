@@ -64,6 +64,26 @@ pub enum RequestedRuby {
     Global,
 }
 
+impl RequestedRuby {
+    pub fn explain(&self, installed: bool) -> String {
+        match self {
+            Self::Explicit(_) => "* Default version explicitly selected".to_string(),
+            Self::Project((_, source)) => format!(
+                "* Default version pinned by {}",
+                crate::config::relativize(source.path())
+            ),
+            Self::User((_, source)) => format!(
+                "* Default version pinned by {}",
+                crate::config::unexpand(source.path())
+            ),
+            Self::Global => {
+                let installed_or_available = if installed { "installed" } else { "available" };
+                format!("* Default version is the latest {installed_or_available}")
+            }
+        }
+    }
+}
+
 impl Config<'_> {
     pub(crate) fn new(global_args: &GlobalArgs, request: Option<RubyRequest>) -> Result<Self> {
         let root = Utf8PathBuf::from(env::var("RV_ROOT_DIR").unwrap_or("/".to_owned()));
@@ -283,6 +303,32 @@ impl Config<'_> {
 
         Ok(env)
     }
+}
+
+pub fn relativize(path: &Utf8Path) -> String {
+    let Some(current_dir) = std::env::current_dir().ok() else {
+        return path.to_string();
+    };
+
+    let Some(file_name) = path.file_name().map(|f| f.to_string()) else {
+        return path.to_string();
+    };
+
+    let mut relative_path = file_name.clone();
+
+    for dir in current_dir.ancestors() {
+        if dir.join(&file_name).is_file() {
+            return relative_path;
+        }
+
+        relative_path.insert_str(0, "../");
+    }
+
+    relative_path
+}
+
+pub fn unexpand(path: &Utf8Path) -> String {
+    path.as_str().replace(rv_dirs::home_dir().as_str(), "~")
 }
 
 fn xdg_data_path() -> Utf8PathBuf {

@@ -210,6 +210,22 @@ fn test_run_passes_arguments_to_script() {
     output.assert_success();
 }
 
+/// Regression test for https://github.com/spinel-coop/rv/issues/542
+/// On Windows, `rv run irb` failed because Rust's Command doesn't consult
+/// PATHEXT to find .cmd/.bat files. The fix resolves tool names against PATH
+/// with standard Windows extensions before spawning.
+#[test]
+fn test_run_tool_in_path() {
+    let test = RvTest::new();
+    let ruby_dir = test.create_ruby_dir("ruby-4.0.1");
+    test.create_tool_in_ruby_dir(&ruby_dir, "irb");
+
+    let output = test.script_run("irb", &[]);
+
+    output.assert_success();
+    output.assert_stdout_contains("irb running");
+}
+
 #[test]
 fn test_run_no_install_with_missing_ruby() {
     let test = RvTest::new();

@@ -133,6 +133,15 @@ fn ruby_url(version: &RubyVersion, host: &HostPlatform) -> String {
 
     // Windows uses RubyInstaller2 directly
     if host.is_windows() {
+        if version.is_dev() {
+            // Dev builds use the rubyinstaller-head release (no revision number)
+            let download_base = std::env::var("RV_INSTALL_URL").unwrap_or_else(|_| {
+                "https://github.com/oneclick/rubyinstaller2/releases/download/rubyinstaller-head"
+                    .to_owned()
+            });
+            return format!("{download_base}/rubyinstaller-head-{arch}.{ext}");
+        }
+
         let download_base = std::env::var("RV_INSTALL_URL").unwrap_or_else(|_| {
             format!(
                 "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-{number}-1"
@@ -390,9 +399,14 @@ fn extract_7z(
     sevenz_rust2::decompress_file(archive_path.as_std_path(), rubies_dir.as_std_path())?;
 
     // RubyInstaller2 extracts to: rubyinstaller-{version}-1-{arch}/
+    // Dev builds extract to: rubyinstaller-head-{arch}/ (no revision number)
     // We need to rename it to: ruby-{version}/
     let arch = host.ruby_arch_str();
-    let extracted_dir = rubies_dir.join(format!("rubyinstaller-{}-1-{arch}", version.number()));
+    let extracted_dir = if version.is_dev() {
+        rubies_dir.join(format!("rubyinstaller-head-{arch}"))
+    } else {
+        rubies_dir.join(format!("rubyinstaller-{}-1-{arch}", version.number()))
+    };
     let target_dir = rubies_dir.join(format!("ruby-{}", version.number()));
 
     if extracted_dir.exists() {
@@ -445,6 +459,17 @@ mod tests {
         assert_eq!(
             url,
             "https://github.com/spinel-coop/rv-ruby-dev/releases/latest/download/ruby-dev.arm64_sonoma.tar.gz"
+        );
+    }
+
+    #[test]
+    fn test_ruby_url_windows_dev() {
+        let host = HostPlatform::from_target_triple("x86_64-pc-windows-msvc").unwrap();
+        let url = ruby_url(&v("dev"), &host);
+
+        assert_eq!(
+            url,
+            "https://github.com/oneclick/rubyinstaller2/releases/download/rubyinstaller-head/rubyinstaller-head-x64.7z"
         );
     }
     #[test]

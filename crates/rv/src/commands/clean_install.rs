@@ -2105,6 +2105,8 @@ end"#;
         let expected = ("linux", "aarch64");
         #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
         let expected = ("mingw", "x64");
+        #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+        let expected = ("mingw", "aarch64");
         let actual = Platform::local();
         let Platform::Specific {
             cpu: actual_cpu,

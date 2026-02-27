@@ -56,8 +56,16 @@ jobs:
           path: target/release/rv
 
   lint:
-    name: Lint
-    runs-on: ubuntu-latest
+    name: Lint (${{ matrix.os }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runs-on: ubuntu-latest
+          - os: windows
+            runs-on: windows-latest
     steps:
       - name: Check out repo
         uses: actions/checkout@v6
@@ -70,8 +78,13 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run linters
+      - name: Run linters (Unix)
+        if: matrix.os == 'linux'
         run: ./bin/lint
+
+      - name: Run linters (Windows)
+        if: matrix.os == 'windows'
+        run: ./win/lint.ps1
 
   run-tests:
     name: Run tests

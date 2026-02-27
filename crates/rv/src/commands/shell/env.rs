@@ -121,33 +121,14 @@ fn powershell_escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, RequestedRuby};
+    use crate::config::Config;
 
     use super::*;
-    use assert_fs::TempDir;
-    use camino::Utf8PathBuf;
-    use indexmap::indexset;
     use serde_json::json;
-
-    fn test_config() -> Result<Config> {
-        let root = Utf8PathBuf::from(TempDir::new().unwrap().path().to_str().unwrap());
-        let ruby_dir = root.join("opt/rubies");
-        std::fs::create_dir_all(&ruby_dir)?;
-
-        let config = Config {
-            ruby_dirs: indexset![ruby_dir],
-            current_exe: root.join("bin").join("rv"),
-            requested_ruby: RequestedRuby::Explicit("3.5.0".parse().unwrap()),
-            cache: rv_cache::Cache::temp().unwrap(),
-            project_root: root,
-        };
-
-        Ok(config)
-    }
 
     #[test]
     fn env_runs() {
-        let config = test_config().unwrap();
+        let config = Config::new_dummy();
         env(&config, Shell::Zsh).unwrap();
     }
 

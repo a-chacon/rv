@@ -17,7 +17,7 @@ use rv_ruby::{
 
 use crate::GlobalArgs;
 
-mod bundler_settings;
+pub mod bundler_settings;
 pub mod github;
 mod ruby_cache;
 mod ruby_fetcher;
@@ -47,12 +47,13 @@ pub enum Error {
 type Result<T> = miette::Result<T, Error>;
 
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct Config<'input> {
     pub ruby_dirs: IndexSet<Utf8PathBuf>,
     pub project_root: Utf8PathBuf,
     pub cache: rv_cache::Cache,
     pub current_exe: Utf8PathBuf,
     pub requested_ruby: RequestedRuby,
+    pub bundler_settings: BundlerSettings<'input>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +64,7 @@ pub enum RequestedRuby {
     Global,
 }
 
-impl Config {
+impl Config<'_> {
     pub(crate) fn new(global_args: &GlobalArgs, request: Option<RubyRequest>) -> Result<Self> {
         let root = Utf8PathBuf::from(env::var("RV_ROOT_DIR").unwrap_or("/".to_owned()));
 
@@ -95,14 +96,14 @@ impl Config {
 
         debug!("Found project directory in {}", project_root);
 
+        let home_dir = rv_dirs::home_dir();
+
         let requested_ruby = match request {
             Some(req) => {
                 debug!("Explicit ruby request for {} received", req);
                 RequestedRuby::Explicit(req)
             }
             None => {
-                let home_dir = rv_dirs::home_dir();
-
                 if let Some(req) = find_directory_ruby(&project_root)? {
                     debug!("Found project ruby request for {} in {:?}", req.0, req.1);
                     RequestedRuby::Project(req)
@@ -115,13 +116,41 @@ impl Config {
             }
         };
 
+        let bundler_settings = BundlerSettings::new(home_dir, project_root.clone());
+
         Ok(Self {
             ruby_dirs,
             project_root,
             cache,
             current_exe,
             requested_ruby,
+            bundler_settings,
         })
+    }
+
+    #[cfg(test)]
+    pub fn new_dummy() -> Self {
+        use assert_fs::TempDir;
+        use indexmap::indexset;
+        use rv_cache::Cache;
+        use std::fs;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = Utf8PathBuf::from(temp_dir.path().to_str().unwrap());
+        let ruby_dir = root.join("rubies");
+        fs::create_dir_all(&ruby_dir).unwrap();
+
+        let home_dir = root.join("home");
+        let project_dir = root.join("project");
+
+        Self {
+            bundler_settings: BundlerSettings::new(home_dir, project_dir),
+            ruby_dirs: indexset![ruby_dir],
+            project_root: root.clone(),
+            cache: Cache::temp().unwrap(),
+            current_exe: root.join("bin").join("rv"),
+            requested_ruby: RequestedRuby::Global,
+        }
     }
 
     #[instrument(skip_all, level = "trace")]
@@ -186,12 +215,7 @@ impl Config {
     }
 
     pub fn gem_home(&self, ruby: &Ruby) -> Utf8PathBuf {
-        let bundler_settings = BundlerSettings {
-            home_dir: rv_dirs::home_dir(),
-            project_dir: self.project_root.clone(),
-        };
-
-        bundler_settings
+        self.bundler_settings
             .path()
             .map(|p| p.join(ruby.gem_scope()))
             .unwrap_or(ruby.gem_home())
@@ -379,22 +403,6 @@ mod tests {
     use super::*;
     use assert_fs::TempDir;
     use camino::Utf8PathBuf;
-    use indexmap::indexset;
-
-    #[test]
-    fn test_config() {
-        let root = Utf8PathBuf::from(TempDir::new().unwrap().path().to_str().unwrap());
-        let ruby_dir = root.join("opt/rubies");
-        std::fs::create_dir_all(&ruby_dir).unwrap();
-
-        Config {
-            ruby_dirs: indexset![ruby_dir],
-            current_exe: root.join("bin").join("rv"),
-            requested_ruby: RequestedRuby::Explicit("3.5.0".parse().unwrap()),
-            cache: rv_cache::Cache::temp().unwrap(),
-            project_root: root,
-        };
-    }
 
     #[test]
     fn test_default_ruby_dirs() {

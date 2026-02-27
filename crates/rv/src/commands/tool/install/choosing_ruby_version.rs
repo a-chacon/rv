@@ -11,7 +11,7 @@ use crate::{
 /// Which ruby version should be used to run a tool?
 /// This takes the tool's Ruby version constraints as a parameter.
 pub async fn ruby_to_use_for(
-    config: &Config,
+    config: &Config<'_>,
     ruby_constraints: &[VersionConstraint],
 ) -> Result<ReleasedRubyVersion> {
     let installed_rubies = config.rubies();

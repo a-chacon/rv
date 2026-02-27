@@ -7,7 +7,7 @@
 # You may check the current default at
 #   https://github.com/Canop/bacon/blob/main/defaults/default-bacon.toml
 
-default_job = "check"
+default_job = "nextest"
 env.CARGO_TERM_COLOR = "always"
 
 [jobs.check]
@@ -68,10 +68,7 @@ command = ["cargo", "test"]
 need_stdout = true
 
 [jobs.nextest]
-command = [
-    "cargo", "nextest", "run",
-    "--hide-progress-bar", "--failure-output", "final"
-]
+command = ["bin/test", "--hide-progress-bar", "--failure-output", "final"]
 need_stdout = true
 analyzer = "nextest"
 

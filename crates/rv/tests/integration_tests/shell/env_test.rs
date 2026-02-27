@@ -134,7 +134,7 @@ fn test_shell_env_with_ruby_and_xdg_compatible_gem_path() {
     // but the quotes remain. This is semantically correct for bash.
     #[cfg(windows)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT MANPATH
+    unset RUBYOPT
     export RUBY_ROOT='/tmp/home/.local/share/rv/rubies/ruby-3.3.5'
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
@@ -184,7 +184,7 @@ fn test_shell_env_with_ruby_and_legacy_gem_path() {
 
     #[cfg(windows)]
     assert_snapshot!(stdout, @r"
-    unset RUBYOPT MANPATH
+    unset RUBYOPT
     export RUBY_ROOT='/tmp/home/.local/share/rv/rubies/ruby-3.3.5'
     export RUBY_ENGINE=ruby
     export RUBY_VERSION=3.3.5
@@ -225,7 +225,6 @@ fn test_powershell_env_with_ruby() {
     #[cfg(windows)]
     assert_snapshot!(stdout, @r#"
     Remove-Item Env:\RUBYOPT -ErrorAction SilentlyContinue
-    Remove-Item Env:\MANPATH -ErrorAction SilentlyContinue
     $env:RUBY_ROOT = "/tmp/home/.local/share/rv/rubies/ruby-3.3.5"
     $env:RUBY_ENGINE = "ruby"
     $env:RUBY_VERSION = "3.3.5"
@@ -247,13 +246,25 @@ fn test_shell_env_with_existing_manpath() {
         "/usr/share/man:/usr/local/share/man".into(),
     );
 
-    // Ensure the legacy path is present.
-    create_dir_all(test.legacy_gem_path("3.3")).unwrap();
+    let output = test.rv(&["shell", "env", "zsh"]);
+    output.assert_success();
 
-    test.env.insert("PATH".into(), "/tmp/bin".into());
+    output.assert_stdout_contains("export MANPATH='/tmp/home/.local/share/rv/rubies/ruby-3.3.5/share/man:/usr/share/man:/usr/local/share/man'");
+
+    // Check it's not duplicated when rv ruby already in MANPATH
+    test.env.insert(
+        "MANPATH".into(),
+        format!(
+            "{}/ruby-3.3.5/share/man:/usr/share/man:/usr/local/share/man",
+            test.rubies_dir()
+        ),
+    );
 
     let output = test.rv(&["shell", "env", "zsh"]);
     output.assert_success();
 
-    assert_snapshot!(output.normalized_stdout());
+    assert!(
+        !output.normalized_stdout().contains("export MANPATH"),
+        "MANPATH should not require modifications if already set",
+    )
 }
